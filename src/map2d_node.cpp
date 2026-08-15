@@ -32,6 +32,8 @@ public:
             "/slam_scale", 10, [this](const std_msgs::msg::Float32::SharedPtr msg) {
                 current_scale = msg->data;
             });
+        map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
+            "/map", 10);
         grid_map.assign(width_map * height_map, 0);
         tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
@@ -88,6 +90,12 @@ public:
     }
 
 private:
+    void NavMap(){
+      auto msg = nav_msgs::msg::OccupancyGrid();
+      //Bla bla bla TODO
+      map_pub -> publish(msg);
+
+    }
     void point_cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
         pcl::fromROSMsg(*msg, *pcl_cloud);
@@ -175,6 +183,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr scale_sub_;
+    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener;
     float slam_height_est = -1.0f;
