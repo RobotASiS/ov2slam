@@ -75,7 +75,7 @@ RUN mkdir build install && cd build \
         -D BUILD_opencv_latentsvm=OFF \
         -D BUILD_opencv_line_descriptor=OFF \
         -D BUILD_opencv_matlab=OFF \
-        -D BUILD_opencv_optflow=ON \k2p1Tdgyg
+        -D BUILD_opencv_optflow=ON \
         -D BUILD_opencv_reg=OFF \
         -D BUILD_opencv_saliency=OFF \
         -D BUILD_opencv_surface_matching=OFF \
@@ -196,8 +196,9 @@ RUN apt update \
         ros-${ROS_DISTRO}-geometry-msgs \
         ros-${ROS_DISTRO}-robot-localization \
         ros-${ROS_DISTRO}-tf2-sensor-msgs \
-        ros-$ROS_DISTRO-navigation2 \
-        ros-$ROS_DISTRO-nav2-bringup \
+        ros-${ROS_DISTRO}-navigation2 \
+        ros-${ROS_DISTRO}-nav2-bringup \
+        ros-${ROS_DISTRO}-v4l2-camera \
         libglfw3-dev \
         libgl1-mesa-dev \
     && rm -rf /var/lib/apt/lists/*
