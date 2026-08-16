@@ -2,6 +2,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "nav_msgs/msg/occupancy_grid.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -92,9 +93,34 @@ public:
 private:
     void NavMap(){
       auto msg = nav_msgs::msg::OccupancyGrid();
-      //Bla bla bla TODO
-      map_pub -> publish(msg);
 
+      msg.header.stamp = this->now();
+      msg.header.frame_id = "world";
+      
+      msg.info.width = this->width_map;
+      msg.info.height = this->height_map;
+      msg.info.resolution = this->resolution;
+
+      double origin_x = - (msg.info.width * msg.info.resolution) / 2.0;
+      double origin_y = - (msg.info.height * msg.info.resolution) / 2.0;
+
+      msg.info.origin.position.x = origin_x;
+      msg.info.origin.position.y = origin_y;
+      msg.info.origin.position.z = 0.0;
+
+      msg.info.origin.orientation.x = 0.0;
+      msg.info.origin.orientation.y = 0.0;
+      msg.info.origin.orientation.z = 0.0;
+      msg.info.origin.orientation.w = 1.0;
+      
+      std::vector<int8_t> grid_data = grid_map;
+      for (size_t i = 0; i < grid_data.size(); i++){
+        if (grid_data[i] != 0){
+          grid_data[i] = 100;
+        }
+      }
+      msg.data = std::move(grid_data);
+      map_pub->publish(msg);
     }
     void point_cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
@@ -120,6 +146,7 @@ private:
         sor.filter(*filtered_cloud);
 
         mapping(filtered_cloud);
+        NavMap();
     }
 
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -196,13 +223,13 @@ private:
     float calib_yaw = 0.0f;
 
     // Zwiekszona rozdzielczosc mapy
-    const int width_map = 250;
-    const int height_map = 250;
+    const uint32_t width_map = 250;
+    const uint32_t height_map = 250;
     const float map_size = 4.0f; 
     const float resolution = map_size / width_map;
     const float cell_draw_size = 3.0f;
     
-    std::vector<int> grid_map;
+    std::vector<int8_t> grid_map;
     float pose_x = 0.0f;
     float pose_y = 0.0f;
     float current_scale = 1.0f;
