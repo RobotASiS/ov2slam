@@ -15,6 +15,7 @@ def generate_launch_description():
     # Ścieżka do konfiguracji RViz
     rviz_config_path = os.path.join(pkg_share, 'ov2slam_visualization.rviz') 
 
+    planner_config_path = os.path.join(pkg_share, 'config', 'planner_server.yaml')
     return LaunchDescription([
         # 1. Węzeł IMU (MPU6050)
         Node(
@@ -23,7 +24,26 @@ def generate_launch_description():
             name='mpu6050_node',
             output='screen'
         ),
+        Node(
+            package='nav2_planner',
+            executable='planner_server',
+            name='planner_server',
+            output='screen',
+            parameters=[planner_config_path]
+        ),
 
+        # Menedżer cyklu życia dla węzłów Nav2 (aktywuje planner_server)
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_planner',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'autostart': True,
+                'node_names': ['planner_server']
+            }]
+        ),
         # 2. Główny węzeł OV2SLAM
         Node(
             package='ov2slam',
