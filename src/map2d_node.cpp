@@ -214,6 +214,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr scale_sub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener;
     float slam_height_est = -1.0f;
