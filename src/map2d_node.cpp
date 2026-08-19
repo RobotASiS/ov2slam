@@ -36,8 +36,11 @@ public:
         map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
             "/map", 10);
         grid_map.assign(width_map * height_map, 0);
+        goal_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>(
+            "/goal",10);
         tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+
     }
 
     void draw_gui() {
