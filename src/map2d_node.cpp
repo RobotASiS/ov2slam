@@ -89,11 +89,35 @@ public:
                 IM_COL32(0, 255, 0, 255));
         }
 
-        ImGui::Dummy(ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
+        ImGui::InvisibleButton(ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
+        if(ImGui::IsItemHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) {
+          ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+          int clicked_grid_x = static_cast<int>((mouse_pos.x - p.x) / cell_draw_size);
+          int clicked_grid_y = static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
+
+          if (clicked_grid_x >= 0 && clicked_grid_x < width_map && clicked_grid_y >= 0 && clicked_grid_y < height_map) {
+              int clicked_index = (clicked_grid_y * width_map) + clicked_grid_x;
+            }
         ImGui::End();
     }
 
 private:
+    void publish_goal(int GridCell ){
+      auto msg = geometry_msgs::msg::PoseStamped();
+
+      msg.header.stamp = this->now();
+      msg.header.frame_id = "world";
+      x = GridCell%this->rows;
+      y = GridCell/this->rows;
+      msg.pose.position.x = x*resolution;
+      msg.pose.position.y = y*resolution;
+      msg.pose.position.z = 0;
+      msg.pose.orientation.x = 0.0
+      msg.pose.orientation.y = 0.0
+      msg.pose.orientation.z = 0.0
+      msg.pose.orientation.w = 1.0
+      goal_pub->publish(msg);
+    }
     void NavMap(){
       auto msg = nav_msgs::msg::OccupancyGrid();
 
@@ -232,6 +256,7 @@ private:
     const float map_size = 4.0f; 
     const float resolution = map_size / width_map;
     const float cell_draw_size = 3.0f;
+    const int rows = map_size / resolution;
     
     std::vector<int8_t> grid_map;
     float pose_x = 0.0f;
