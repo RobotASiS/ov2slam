@@ -44,6 +44,13 @@ def generate_launch_description():
                 'node_names': ['planner_server']
             }]
         ),
+        # wezel ogarniania path ekf_filter_node
+        Node(
+            package='ov2slam',
+            executable='path_planner_node',
+            name='path_planner',
+            output='screen',
+        ),
         # 2. Główny węzeł OV2SLAM
         Node(
             package='ov2slam',

@@ -225,6 +225,18 @@ install(TARGETS
   INCLUDES DESTINATION include
 )
 
+find_package(rclcpp_action REQUIRED)
+    find_package(nav2_msgs REQUIRED)
+
+    add_executable(path_planner_node src/path_planner.cpp)
+    ament_target_dependencies(path_planner_node
+      rclcpp
+      rclcpp_action
+      geometry_msgs
+      nav_msgs
+      nav2_msgs
+    )
+    install(TARGETS path_planner_node DESTINATION lib/${PROJECT_NAME})
 ############################
 ## ImGui 2D Map Viewer    ##
 ############################

@@ -89,15 +89,16 @@ public:
                 IM_COL32(0, 255, 0, 255));
         }
 
-        ImGui::InvisibleButton(ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
-        if(ImGui::IsItemHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) {
+        ImGui::InvisibleButton("map", ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
+        if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
           ImVec2 mouse_pos = ImGui::GetIO().MousePos;
           int clicked_grid_x = static_cast<int>((mouse_pos.x - p.x) / cell_draw_size);
           int clicked_grid_y = static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
-
           if (clicked_grid_x >= 0 && clicked_grid_x < width_map && clicked_grid_y >= 0 && clicked_grid_y < height_map) {
               int clicked_index = (clicked_grid_y * width_map) + clicked_grid_x;
-            }
+              this->publish_goal(clicked_index);
+          }
+        }
         ImGui::End();
     }
 
@@ -107,15 +108,16 @@ private:
 
       msg.header.stamp = this->now();
       msg.header.frame_id = "world";
-      x = GridCell%this->rows;
-      y = GridCell/this->rows;
-      msg.pose.position.x = x*resolution;
-      msg.pose.position.y = y*resolution;
-      msg.pose.position.z = 0;
-      msg.pose.orientation.x = 0.0
-      msg.pose.orientation.y = 0.0
-      msg.pose.orientation.z = 0.0
-      msg.pose.orientation.w = 1.0
+      int gx = GridCell % width_map;
+      int gy = GridCell / width_map;
+
+      msg.pose.position.x = (gx * resolution) - (map_size / 2.0f) + (resolution / 2.0f);
+      msg.pose.position.y = (gy * resolution) - (map_size / 2.0f) + (resolution / 2.0f);
+      msg.pose.position.z = 0.0;
+      msg.pose.orientation.x = 0.0;
+      msg.pose.orientation.y = 0.0;
+      msg.pose.orientation.z = 0.0;
+      msg.pose.orientation.w = 1.0;
       goal_pub->publish(msg);
     }
     void NavMap(){
