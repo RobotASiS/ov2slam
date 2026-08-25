@@ -68,14 +68,6 @@ public:
                     ImVec2(p.x + (x * cell_draw_size), p.y + (y * cell_draw_size)),
                     ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((y + 1) * cell_draw_size)),
                     color);
-                for(auto& points : this->path.poses){
-                  pose_to_grid(path.poses.postion)
-
-                draw_list->AddRectFilled(
-                    ImVec2(p.x + (x * cell_draw_size), p.y + (y * cell_draw_size)),
-                    ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((y + 1) * cell_draw_size)),
-                    IM_COL32(0,0,0,255);
-                }
 
             }
         }
@@ -104,13 +96,16 @@ public:
         ImGui::InvisibleButton("map", ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
         if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
           ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-          draw_list->AddCircleFilled(mouse_pos.x,mouse_pos.y,cell_draw_size*0.6f,IM_COL32(0,0,255,255))
           int clicked_grid_x = static_cast<int>((mouse_pos.x - p.x) / cell_draw_size);
           int clicked_grid_y = static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
           if (clicked_grid_x >= 0 && clicked_grid_x < width_map && clicked_grid_y >= 0 && clicked_grid_y < height_map) {
               int clicked_index = (clicked_grid_y * width_map) + clicked_grid_x;
               this->publish_goal(clicked_index);
           }
+        }
+        for (const auto & pose_stamped : this->path.poses) {
+            ImVec2 screen_pos = this->pose_to_grid(pose_stamped, p);
+            draw_list->AddCircleFilled(screen_pos, cell_draw_size * 0.5f, IM_COL32(0, 200, 255, 255)); 
         }
         ImGui::End();
     }
@@ -168,8 +163,9 @@ private:
       this->path = *msg;
     }
     void point_cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-        auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::fromROSMsg(*msg, *pcl_cloud);
+
         Eigen::Affine3f transform = Eigen::Affine3f::Identity();
     
         if (is_calibrated) {
@@ -179,14 +175,31 @@ private:
         transform.rotate(Eigen::AngleAxisf(-M_PI/2.0, Eigen::Vector3f::UnitZ()));
         transform.rotate(Eigen::AngleAxisf(-M_PI/2.0, Eigen::Vector3f::UnitX()));
 
-        auto transformed_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::transformPointCloud(*pcl_cloud, *transformed_cloud, transform);
+
+        // Usuwamy NaN, Inf oraz punkty (0,0,0) przed filtrem SOR
+        pcl::PointCloud<pcl::PointXYZ>::Ptr clean_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        clean_cloud->points.reserve(transformed_cloud->points.size());
+        for (const auto& pt : transformed_cloud->points) {
+            if (std::isfinite(pt.x) && std::isfinite(pt.y) && std::isfinite(pt.z)) {
+                if (std::abs(pt.x) > 0.01f || std::abs(pt.y) > 0.01f || std::abs(pt.z) > 0.01f) {
+                    clean_cloud->points.push_back(pt);
+                }
+            }
+        }
+
+        if (clean_cloud->points.size() < 20) {
+            mapping(clean_cloud);
+            NavMap();
+            return;
+        }
         
         // Filtracja szumow (Statistical Outlier Removal)
         pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-        sor.setInputCloud(transformed_cloud);
-        sor.setMeanK(20);             
+        sor.setInputCloud(clean_cloud);
+        sor.setMeanK(std::min(20, static_cast<int>(clean_cloud->points.size() - 1)));             
         sor.setStddevMulThresh(1.0);  
         sor.filter(*filtered_cloud);
 
@@ -217,25 +230,28 @@ private:
     }
 
    
-    std::vector pose_to_grid(geometry_msgs::msg:PoseStamped pose){
-      
-      float px = pose.position.x;
-      float py = pose.position.y;
+    ImVec2 pose_to_grid(const geometry_msgs::msg::PoseStamped & pose_stamped, const ImVec2 & p) {
+        float px = pose_stamped.pose.position.x;
+        float py = pose_stamped.pose.position.y;
 
-      int path_grid_x = static_cast<int>((px + (map_size / 2.0f)) / resolution);
-      int path_grid_y = static_cast<int>((py + (map_size / 2.0f)) / resolution);
-      std::vector<int8_t> poses;
-      poses[0]= path_grid_x;
-      poses[1]= path_grid_y;
-      return poses;
+        int grid_x = static_cast<int>((px + (map_size / 2.0f)) / resolution);
+        int grid_y = static_cast<int>((py + (map_size / 2.0f)) / resolution);
 
+        return ImVec2(p.x + grid_x * cell_draw_size + (cell_draw_size / 2.0f),
+                      p.y + grid_y * cell_draw_size + (cell_draw_size / 2.0f));
     }
+
     void mapping(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
         std::fill(grid_map.begin(), grid_map.end(), 0);
         
         std::vector<int> point_counts(width_map * height_map, 0);
 
         for (auto& point : cloud->points) {
+            // Ignorujemy zresetowane punkty (0,0,0) ze SLAM-u
+            if (std::abs(point.x) < 0.01f && std::abs(point.y) < 0.01f) {
+                continue;
+            }
+
             float px = point.x * current_scale;
             float py = point.y * current_scale;
             float pz = point.z * current_scale;
@@ -255,10 +271,17 @@ private:
             point_counts[index]++;
         }
 
-        // Mapowanie do wektora z uwzglednieniem minimalnej liczby punktow per komorka
         for (size_t i = 0; i < point_counts.size(); ++i) {
-            if (point_counts[i] >= 3) { // Prog - wymagamy np. 3 punktow, by uznac za przeszkode
-                grid_map[i] = point_counts[i]; // Utrzymujemy ilosc, zeby miec gladki kolor
+            if (point_counts[i] >= 3) { 
+                grid_map[i] = point_counts[i]; 
+            }
+        }
+
+        // TESTOWY KWADRAT (przesuniety 50cm przed robota: X 155..185, Y 105..145)
+        for (int y = 105; y < 145; ++y) {
+            for (int x = 155; x < 185; ++x) {
+                int index = (y * width_map) + x;
+                grid_map[index] = 100;
             }
         }
     }

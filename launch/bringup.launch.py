@@ -100,5 +100,13 @@ def generate_launch_description():
             name='rviz2',
             output='screen',
             arguments=['-d', rviz_config_path]
+        ),
+
+        # 7. Polaczenie drzewa TF (world -> odom dla Nav2)
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='world_to_odom_broadcaster',
+            arguments=['0', '0', '0', '0', '0', '0', 'world', 'odom']
         )
     ])

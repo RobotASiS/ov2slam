@@ -34,12 +34,7 @@ public:
 
 private:
     void create_path() {
-        if (!has_goal) {
-            RCLCPP_INFO(this->get_logger(), "Brak celu");
-            return;
-        }
-        if (goal_in_progress_) {
-            RCLCPP_INFO(this->get_logger(), "dalej liczy");
+        if (!has_goal || goal_in_progress_) {
             return;
         }
 
