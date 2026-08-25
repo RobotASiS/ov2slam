@@ -18,7 +18,7 @@
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/common/transforms.h>
 #include "std_msgs/msg/float32.hpp"
-#include "nav_msgs/msg/Path"
+#include "nav_msgs/msg/path.hpp"
 
 class MapperNode : public rclcpp::Node {
 public:
@@ -40,7 +40,7 @@ public:
         goal_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>(
             "/goal",10);
         path_sub = this->create_subscription<nav_msgs::msg::Path>(
-            "/plan", 10, std::bind(&MapperNode::path_callback, this, std::placeholders::_1))
+            "/plan", 10, std::bind(&MapperNode::path_callback, this, std::placeholders::_1));
         tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
@@ -68,6 +68,15 @@ public:
                     ImVec2(p.x + (x * cell_draw_size), p.y + (y * cell_draw_size)),
                     ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((y + 1) * cell_draw_size)),
                     color);
+                for(auto& points : this->path.poses){
+                  pose_to_grid(path.poses.postion)
+
+                draw_list->AddRectFilled(
+                    ImVec2(p.x + (x * cell_draw_size), p.y + (y * cell_draw_size)),
+                    ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((y + 1) * cell_draw_size)),
+                    IM_COL32(0,0,0,255);
+                }
+
             }
         }
         
@@ -95,6 +104,7 @@ public:
         ImGui::InvisibleButton("map", ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
         if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
           ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+          draw_list->AddCircleFilled(mouse_pos.x,mouse_pos.y,cell_draw_size*0.6f,IM_COL32(0,0,255,255))
           int clicked_grid_x = static_cast<int>((mouse_pos.x - p.x) / cell_draw_size);
           int clicked_grid_y = static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
           if (clicked_grid_x >= 0 && clicked_grid_x < width_map && clicked_grid_y >= 0 && clicked_grid_y < height_map) {
@@ -207,7 +217,19 @@ private:
     }
 
    
+    std::vector pose_to_grid(geometry_msgs::msg:PoseStamped pose){
+      
+      float px = pose.position.x;
+      float py = pose.position.y;
 
+      int path_grid_x = static_cast<int>((px + (map_size / 2.0f)) / resolution);
+      int path_grid_y = static_cast<int>((py + (map_size / 2.0f)) / resolution);
+      std::vector<int8_t> poses;
+      poses[0]= path_grid_x;
+      poses[1]= path_grid_y;
+      return poses;
+
+    }
     void mapping(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
         std::fill(grid_map.begin(), grid_map.end(), 0);
         
