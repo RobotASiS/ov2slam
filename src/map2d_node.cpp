@@ -18,6 +18,7 @@
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/common/transforms.h>
 #include "std_msgs/msg/float32.hpp"
+#include "nav_msgs/msg/Path"
 
 class MapperNode : public rclcpp::Node {
 public:
@@ -38,6 +39,8 @@ public:
         grid_map.assign(width_map * height_map, 0);
         goal_pub = this->create_publisher<geometry_msgs::msg::PoseStamped>(
             "/goal",10);
+        path_sub = this->create_subscription<nav_msgs::msg::Path>(
+            "/plan", 10, std::bind(&MapperNode::path_callback, this, std::placeholders::_1))
         tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
@@ -151,6 +154,9 @@ private:
       msg.data = std::move(grid_data);
       map_pub->publish(msg);
     }
+    void path_callback(const nav_msgs::msg::Path::SharedPtr msg){
+      this->path = *msg;
+    }
     void point_cloud_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         auto pcl_cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
         pcl::fromROSMsg(*msg, *pcl_cloud);
@@ -239,6 +245,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
     rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr scale_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer;
@@ -261,6 +268,7 @@ private:
     const int rows = map_size / resolution;
     
     std::vector<int8_t> grid_map;
+    nav_msgs::msg::Path path;
     float pose_x = 0.0f;
     float pose_y = 0.0f;
     float current_scale = 1.0f;
