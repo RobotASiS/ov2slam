@@ -19,7 +19,7 @@ RUN git clone https://gitlab.com/libeigen/eigen.git
 RUN git clone https://github.com/opencv/opencv.git
 RUN git clone https://github.com/opencv/opencv_contrib.git
 RUN git clone https://github.com/laurentkneip/opengv.git
-
+RUN git clone https://github.com/casadi/casadi.git
 ##############
 ### Eigen3 ###
 ##############
@@ -108,6 +108,11 @@ RUN mkdir build install && cd build \
         -D BUILD_opencv_python2=OFF \
         -D WITH_GSTREAMER=OFF \
         -D ENABLE_PRECOMPILED_HEADERS=OFF \
+    && make -j`nproc` install
+
+WORKDIR /ws/src/ov2slam/Thirdparty/casadi
+RUN mkdir build install && cd build \
+    && cmake .. -D CMAKE_BUILD_TYPE=Release \
     && make -j`nproc` install
 
 ##############
@@ -209,7 +214,6 @@ ADD . /ws/src/ov2slam
 RUN if [ ! -d /ws/src/ov2slam/Thirdparty/imgui ]; then \
         git clone --depth 1 --branch v1.91.8 https://github.com/ocornut/imgui.git /ws/src/ov2slam/Thirdparty/imgui; \
     fi
-
 WORKDIR /ws
 RUN . /opt/ros/$ROS_DISTRO/setup.sh && colcon build
 

@@ -108,5 +108,19 @@ def generate_launch_description():
             executable='static_transform_publisher',
             name='world_to_odom_broadcaster',
             arguments=['0', '0', '0', '0', '0', '0', 'world', 'odom']
+        ),
+
+        # 8. Węzeł kamery
+        Node(
+            package='v4l2_camera',
+            executable='v4l2_camera_node',
+            name='camera_node',
+            output='screen',
+            parameters=[{
+                'image_size': [640, 480]
+            }],
+            remappings=[
+                ('/image_raw', '/cam0/image_raw')
+            ]
         )
     ])
