@@ -332,4 +332,8 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(PROGRAMS scripts/stereo_publisher.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
