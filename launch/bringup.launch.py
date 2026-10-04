@@ -16,8 +16,10 @@ def generate_launch_description():
     rviz_config_path = os.path.join(pkg_share, 'ov2slam_visualization.rviz') 
 
     planner_config_path = os.path.join(pkg_share, 'config', 'planner_server.yaml')
+
+    mpc_config_path = os.path.join(pkg_share, 'parameters_files', 'mpc_params.yaml')
     return LaunchDescription([
-        # 1. Węzeł IMU (MPU6050)
+        # 1. Węzeł IMU 
         Node(
             package='ov2slam',
             executable='mpu6050_node',
@@ -32,7 +34,7 @@ def generate_launch_description():
             parameters=[planner_config_path]
         ),
 
-        # Menedżer cyklu życia dla węzłów Nav2 (aktywuje planner_server)
+        # Menedżer cyklu życia dla węzłów Nav2 
         Node(
             package='nav2_lifecycle_manager',
             executable='lifecycle_manager',
@@ -68,7 +70,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 3b. Węzeł skali z enkoderów (nowy)
+        # 3b. Węzeł skali z enkoderów 
         Node(
             package='ov2slam',
             executable='skala_node',
@@ -76,7 +78,7 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 4. Węzeł filtra EKF (robot_localization)
+        # 4. Węzeł filtra EKF 
         Node(
             package='robot_localization',
             executable='ekf_node',
@@ -85,7 +87,7 @@ def generate_launch_description():
             parameters=[ekf_config_path]
         ),
 
-        # 5. Węzeł mapy 2D (ImGui)
+        # 5. Węzeł mapy 2D 
         Node(
             package='ov2slam',
             executable='map2d_node',
@@ -102,7 +104,7 @@ def generate_launch_description():
             arguments=['-d', rviz_config_path]
         ),
 
-        # 7. Polaczenie drzewa TF (world -> odom dla Nav2)
+        # 7. Polaczenie drzewa TF 
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -122,5 +124,11 @@ def generate_launch_description():
             remappings=[
                 ('/image_raw', '/cam0/image_raw')
             ]
-        )
+        ),
+        Node(
+            package='ov2slam',
+            executable='MPC.py',
+            name='mpc_node',
+            parameters=[mpc_config_path]
+        ),
     ])

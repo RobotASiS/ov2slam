@@ -14,7 +14,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: world
       robot_base_frame: base_link
-      robot_radius: 0.3
+      robot_radius: 0.20
       resolution: 0.016
       track_unknown_space: true
       plugins: ["static_layer", "inflation_layer"]
@@ -24,7 +24,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.7
+        inflation_radius: 0.35
       always_send_full_costmap: true
       introspection_mode: "disabled"
 

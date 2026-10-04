@@ -327,6 +327,7 @@ ament_target_dependencies(pose_cov_adder_node
   tf2_geometry_msgs
 )
 
+
 install(TARGETS
   pose_cov_adder_node
   DESTINATION lib/${PROJECT_NAME}
@@ -343,5 +344,9 @@ install(FILES
   ov2slam_visualization.rviz
   DESTINATION share/${PROJECT_NAME}
 )
+install(PROGRAMS 
+  src/MPC.py
+  src/sim_robot.py
+  DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

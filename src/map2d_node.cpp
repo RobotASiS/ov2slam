@@ -74,14 +74,6 @@ public:
         
         float rx = pose_x;
         float ry = pose_y;
-        if (is_calibrated) {
-            float c = std::cos(-calib_yaw);
-            float s = std::sin(-calib_yaw);
-            float tx = rx * c - ry * s;
-            float ty = rx * s + ry * c;
-            rx = tx;
-            ry = ty;
-        }
 
         int robot_grid_x = static_cast<int>((rx + (map_size / 2.0f)) / resolution);
         int robot_grid_y = static_cast<int>((ry + (map_size / 2.0f)) / resolution);
@@ -210,23 +202,6 @@ private:
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         pose_x = msg->pose.pose.position.x;
         pose_y = msg->pose.pose.position.y; 
-        
-        if (!has_initial_pose) {
-            initial_pose_x = pose_x;
-            initial_pose_y = pose_y;
-            has_initial_pose = true;
-        }
-
-        if (!is_calibrated) {
-            float dx = pose_x - initial_pose_x;
-            float dy = pose_y - initial_pose_y;
-            float dist = std::sqrt(dx*dx + dy*dy);
-            if (dist > 0.2f) {
-                calib_yaw = std::atan2(dy, dx);
-                is_calibrated = true;
-                RCLCPP_INFO(this->get_logger(), "Trajektoria wyrownana! Kat rotacji: %f rad", calib_yaw);
-            }
-        }
     }
 
    

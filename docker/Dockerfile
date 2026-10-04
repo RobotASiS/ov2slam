@@ -19,7 +19,7 @@ RUN git clone https://gitlab.com/libeigen/eigen.git
 RUN git clone https://github.com/opencv/opencv.git
 RUN git clone https://github.com/opencv/opencv_contrib.git
 RUN git clone https://github.com/laurentkneip/opengv.git
-RUN git clone https://github.com/casadi/casadi.git
+
 ##############
 ### Eigen3 ###
 ##############
@@ -108,11 +108,6 @@ RUN mkdir build install && cd build \
         -D BUILD_opencv_python2=OFF \
         -D WITH_GSTREAMER=OFF \
         -D ENABLE_PRECOMPILED_HEADERS=OFF \
-    && make -j`nproc` install
-
-WORKDIR /ws/src/ov2slam/Thirdparty/casadi
-RUN mkdir build install && cd build \
-    && cmake .. -D CMAKE_BUILD_TYPE=Release \
     && make -j`nproc` install
 
 ##############
@@ -204,9 +199,14 @@ RUN apt update \
         ros-${ROS_DISTRO}-navigation2 \
         ros-${ROS_DISTRO}-nav2-bringup \
         ros-${ROS_DISTRO}-v4l2-camera \
+        ros-${ROS_DISTRO}-rclpy \
+        python3-pip \
+        python3-setuptools \
         libglfw3-dev \
         libgl1-mesa-dev \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir casadi
 
 ADD . /ws/src/ov2slam
 
