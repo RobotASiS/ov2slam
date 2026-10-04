@@ -10,13 +10,21 @@ def generate_launch_description():
     ekf_config_path = os.path.join(pkg_share, 'config', 'ekf.yaml')
     
     # Ścieżka do parametrów OV2SLAM (Euroc Mono)
-    ov2slam_config_path = os.path.join(pkg_share, 'parameters_files', 'accurate', 'euroc', 'euroc_mono.yaml')
+    ov2slam_config_path = os.path.join(pkg_share, 'parameters_files', 'accurate', 'wavesshare_stereo.yaml')
     
     # Ścieżka do konfiguracji RViz
     rviz_config_path = os.path.join(pkg_share, 'ov2slam_visualization.rviz') 
 
     planner_config_path = os.path.join(pkg_share, 'config', 'planner_server.yaml')
     return LaunchDescription([
+    # 0. Węzeł kamery rozdzielający obraz na left i right
+        Node(
+            package='ov2slam',
+            executable='stereo_publisher.py',
+            name='stereo_publisher',
+            output='screen'
+        ),
+        
         # 1. Węzeł IMU (MPU6050)
         Node(
             package='ov2slam',
