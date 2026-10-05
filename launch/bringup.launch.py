@@ -10,7 +10,7 @@ def generate_launch_description():
     ekf_config_path = os.path.join(pkg_share, 'config', 'ekf.yaml')
     
     # Ścieżka do parametrów OV2SLAM (Euroc Mono)
-    ov2slam_config_path = os.path.join(pkg_share, 'parameters_files', 'accurate', 'wavesshare_stereo.yaml')
+    ov2slam_config_path = os.path.join(pkg_share, 'parameters_files', 'accurate', 'euroc', 'wavesshare_cam.yaml')
     
     # Ścieżka do konfiguracji RViz
     rviz_config_path = os.path.join(pkg_share, 'ov2slam_visualization.rviz') 
@@ -125,10 +125,9 @@ def generate_launch_description():
             name='camera_node',
             output='screen',
             parameters=[{
-                'image_size': [640, 480]
-            }],
-            remappings=[
-                ('/image_raw', '/cam0/image_raw')
-            ]
+                'video_device': '/dev/video0',   
+                'image_size': [2560, 720],       
+                'pixel_format': 'YUYV'
+            }]
         )
     ])

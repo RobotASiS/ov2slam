@@ -1,59 +1,60 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
 
-
 class StereoPublisher(Node):
     def __init__(self):
         super().__init__('stereo_publisher')
         self.bridge = CvBridge()
 
+
+        self.sub_image = self.create_subscription(
+            Image, 
+            '/image_raw', 
+            self.image_callback, 
+            10
+        )
+
+        #publikatory dla lewego i prawego oka
         self.pub_left = self.create_publisher(Image, '/left/image_raw', 10)
         self.pub_right = self.create_publisher(Image, '/right/image_raw', 10)
 
-        # otwarcie kamery
-        self.cap = cv2.VideoCapture('/dev/video0', cv2.CAP_V4L2)
+        self.get_logger().info("Węzeł tnący obraz uruchomiony. Czekam na /image_raw...")
 
-        # Wymuszenie trybu MJPG
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
+    def image_callback(self, msg):
+        try:
 
-        if not self.cap.isOpened():
-            self.get_logger().error("Nie mozna otworzyc urzadzenia /dev/video0")
+            cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        except Exception as e:
+            self.get_logger().error(f"Błąd konwersji obrazu: {e}")
             return
 
-        # Pętla odświeżająca obraz
-        self.timer = self.create_timer(0.033, self.timer_callback)
-        self.get_logger().info("Zintegrowana kamera uruchomiona, pobieranie obrazu...")
 
-    def timer_callback(self):
-        ret, frame = self.cap.read()
-        if not ret:
-            return
+        gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 
-        # Cięcie pobranej klatki w locie na dwie połowy
-        mid = frame.shape[1] // 2
-        left_img = frame[:, :mid]
-        right_img = frame[:, mid:]
 
-        # Przypisanie tego samego znacznika czasu obu klatkom
-        ros_time = self.get_clock().now().to_msg()
+        mid = gray_image.shape[1] // 2
+        left_img = gray_image[:, :mid]
+        right_img = gray_image[:, mid:]
 
-        msg_left = self.bridge.cv2_to_imgmsg(left_img, "bgr8")
-        msg_left.header.stamp = ros_time
-        msg_left.header.frame_id = "left_camera_link"
+        try:
 
-        msg_right = self.bridge.cv2_to_imgmsg(right_img, "bgr8")
-        msg_right.header.stamp = ros_time
-        msg_right.header.frame_id = "right_camera_link"
+            msg_left = self.bridge.cv2_to_imgmsg(left_img, "mono8")
+            msg_left.header.stamp = msg.header.stamp
+            msg_left.header.frame_id = "left_camera_link"
 
-        self.pub_left.publish(msg_left)
-        self.pub_right.publish(msg_right)
+            msg_right = self.bridge.cv2_to_imgmsg(right_img, "mono8")
+            msg_right.header.stamp = msg.header.stamp  
+            msg_right.header.frame_id = "right_camera_link"
 
+
+            self.pub_left.publish(msg_left)
+            self.pub_right.publish(msg_right)
+        except Exception as e:
+            self.get_logger().error(f"Błąd publikacji: {e}")
 
 def main(args=None):
     rclpy.init(args=args)
@@ -63,9 +64,9 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.cap.release()
         node.destroy_node()
-
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
