@@ -115,7 +115,8 @@ def generate_launch_description():
                 'max_speed': 0.40,
                 'max_steer': 0.60,
                 'horizon_n': 10,
-                'dt': 0.1
+                'dt': 0.1,
+                'goal_timeout_sec': 15.0
             }]
         ),
 

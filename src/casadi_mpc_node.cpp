@@ -24,6 +24,7 @@ public:
         this->declare_parameter<int>("horizon_n", 10);
         this->declare_parameter<double>("dt", 0.1);
         this->declare_parameter<double>("goal_tolerance", 0.15);
+        this->declare_parameter<double>("goal_timeout_sec", 15.0); // Failsafe: zatrzymanie po 15 sek bez osiągnięcia celu
 
         L_ = this->get_parameter("wheelbase").as_double();
         v_max_ = this->get_parameter("max_speed").as_double();
@@ -32,6 +33,7 @@ public:
         N_ = this->get_parameter("horizon_n").as_int();
         dt_ = this->get_parameter("dt").as_double();
         goal_tol_ = this->get_parameter("goal_tolerance").as_double();
+        goal_timeout_sec_ = this->get_parameter("goal_timeout_sec").as_double();
 
         setup_mpc();
 
@@ -47,17 +49,20 @@ public:
         control_timer_ = this->create_wall_timer(
             100ms, std::bind(&CasadiMpcNode::control_loop, this));
 
-        RCLCPP_INFO(this->get_logger(), "C++ CasADi MPC Node zainicjalizowany (N=%d, dt=%.2f, L=%.2f)", N_, dt_, L_);
+        RCLCPP_INFO(this->get_logger(), "C++ CasADi MPC Node zainicjalizowany (N=%d, dt=%.2f, L=%.2f, Failsafe=%.1fs)", 
+                    N_, dt_, L_, goal_timeout_sec_);
     }
 
 private:
-    double L_, v_max_, v_min_, delta_max_, dt_, goal_tol_;
+    double L_, v_max_, v_min_, delta_max_, dt_, goal_tol_, goal_timeout_sec_;
     int N_;
 
     double current_x_ = 0.0, current_y_ = 0.0, current_yaw_ = 0.0, current_v_ = 0.0;
     bool odom_received_ = false;
     double last_delta_ = 0.0;
 
+    bool goal_active_ = false;
+    rclcpp::Time goal_start_time_;
     std::vector<std::pair<double, double>> path_points_;
 
     Function solver_;
@@ -184,22 +189,47 @@ private:
         for (const auto& p : msg->poses) {
             path_points_.emplace_back(p.pose.position.x, p.pose.position.y);
         }
-        RCLCPP_INFO(this->get_logger(), "Odebrano nowa sciezke A* (%zu punktow)", path_points_.size());
+
+        if (path_points_.size() >= 2) {
+            goal_active_ = true;
+            goal_start_time_ = this->now();
+            RCLCPP_INFO(this->get_logger(), "Odebrano nowa sciezke A* (%zu punktow). Aktywowano failsafe timer (%.1fs).",
+                        path_points_.size(), goal_timeout_sec_);
+        } else {
+            goal_active_ = false;
+            stop_robot();
+        }
     }
 
     void control_loop() {
-        if (!odom_received_ || path_points_.size() < 2) {
+        if (!odom_received_ || !goal_active_ || path_points_.size() < 2) {
             return;
         }
 
+        // 1. FAILSAFE: Sprawdzenie limitu czasu 15 sekund
+        double elapsed_sec = (this->now() - goal_start_time_).seconds();
+        if (elapsed_sec > goal_timeout_sec_) {
+            RCLCPP_WARN(this->get_logger(),
+                "FAILSAFE ZADZIALAL: Pojazd nie osiagnal celu w ciagu %.1f s (czas: %.2f s)! Wylaczam naped do czasu podania nastepnego celu.",
+                goal_timeout_sec_, elapsed_sec);
+            stop_robot();
+            goal_active_ = false;
+            path_points_.clear();
+            return;
+        }
+
+        // 2. Sprawdzenie czy osiągnięto cel
         auto [gx, gy] = path_points_.back();
         double dist_to_goal = std::hypot(gx - current_x_, gy - current_y_);
         if (dist_to_goal < goal_tol_) {
+            RCLCPP_INFO(this->get_logger(), "Cel osiagniety (odleglosc: %.2f m)! Zatrzymuje robota.", dist_to_goal);
             stop_robot();
+            goal_active_ = false;
+            path_points_.clear();
             return;
         }
 
-        // Najbliższy punkt
+        // 3. Wyszukanie najbliższego punktu na ścieżce
         size_t min_idx = 0;
         double min_dist = 1e9;
         for (size_t i = 0; i < path_points_.size(); ++i) {

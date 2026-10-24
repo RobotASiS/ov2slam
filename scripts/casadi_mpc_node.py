@@ -12,14 +12,15 @@ class CasadiMPCNode(Node):
         super().__init__('casadi_mpc_node')
 
         # Deklaracja parametrów
-        self.declare_parameter('wheelbase', 0.20)      # L [m]
-        self.declare_parameter('max_speed', 0.40)      # v_max [m/s]
-        self.declare_parameter('min_speed', 0.0)       # v_min [m/s]
-        self.declare_parameter('max_steer', 0.60)      # delta_max [rad] (~34 deg)
-        self.declare_parameter('horizon_n', 10)        # N
-        self.declare_parameter('dt', 0.1)              # dt [s]
-        self.declare_parameter('control_rate_hz', 10.0)# f [Hz]
-        self.declare_parameter('goal_tolerance', 0.15) # tolerancja dotarcia do celu [m]
+        self.declare_parameter('wheelbase', 0.20)         # L [m]
+        self.declare_parameter('max_speed', 0.40)         # v_max [m/s]
+        self.declare_parameter('min_speed', 0.0)          # v_min [m/s]
+        self.declare_parameter('max_steer', 0.60)         # delta_max [rad] (~34 deg)
+        self.declare_parameter('horizon_n', 10)           # N
+        self.declare_parameter('dt', 0.1)                 # dt [s]
+        self.declare_parameter('control_rate_hz', 10.0)   # f [Hz]
+        self.declare_parameter('goal_tolerance', 0.15)    # tolerancja dotarcia do celu [m]
+        self.declare_parameter('goal_timeout_sec', 15.0)  # Failsafe: zatrzymanie po 15 sek bez celu
 
         self.L = self.get_parameter('wheelbase').value
         self.v_max = self.get_parameter('max_speed').value
@@ -29,6 +30,7 @@ class CasadiMPCNode(Node):
         self.dt = self.get_parameter('dt').value
         self.rate = self.get_parameter('control_rate_hz').value
         self.goal_tol = self.get_parameter('goal_tolerance').value
+        self.goal_timeout_sec = self.get_parameter('goal_timeout_sec').value
 
         # Stan robota
         self.current_x = 0.0
@@ -37,9 +39,11 @@ class CasadiMPCNode(Node):
         self.current_v = 0.0
         self.odom_received = False
 
-        # Ścieżka referencyjna z A*
+        # Ścieżka referencyjna z A* i Failsafe
         self.path_points = []
         self.last_delta = 0.0
+        self.goal_active = False
+        self.goal_start_time = None
 
         # Budowa problemu MPC w CasADi
         self.setup_mpc()
@@ -52,7 +56,7 @@ class CasadiMPCNode(Node):
         self.pred_path_pub = self.create_publisher(Path, '/mpc/predicted_path', 10)
 
         self.timer = self.create_timer(1.0 / self.rate, self.control_loop)
-        self.get_logger().info(f"CasADi MPC Node uruchomiony (N={self.N}, dt={self.dt}s, L={self.L}m)")
+        self.get_logger().info(f"CasADi MPC Node uruchomiony (N={self.N}, dt={self.dt}s, L={self.L}m, Failsafe={self.goal_timeout_sec}s)")
 
     def setup_mpc(self):
         # Wymiary stanu: [x, y, psi, v], sterowania: [a, delta]
@@ -77,7 +81,6 @@ class CasadiMPCNode(Node):
         # Warunek początkowy
         g.append(X[:, 0] - P[0:nx])
 
-        last_u_steer = 0.0
         for k in range(self.N):
             st = X[:, k]
             u = U[:, k]
@@ -162,20 +165,44 @@ class CasadiMPCNode(Node):
         self.path_points = []
         for p in msg.poses:
             self.path_points.append([p.pose.position.x, p.pose.position.y])
-        self.get_logger().info(f"Odebrano nową ścieżkę A* ({len(self.path_points)} punktów)")
+
+        if len(self.path_points) >= 2:
+            self.goal_active = True
+            self.goal_start_time = self.get_clock().now()
+            self.get_logger().info(
+                f"Odebrano nową ścieżkę A* ({len(self.path_points)} punktów). Aktywowano failsafe ({self.goal_timeout_sec}s)."
+            )
+        else:
+            self.goal_active = False
+            self.stop_robot()
 
     def control_loop(self):
-        if not self.odom_received or len(self.path_points) < 2:
+        if not self.odom_received or not self.goal_active or len(self.path_points) < 2:
             return
 
-        # Sprawdzenie czy osiągnięto cel
+        # 1. FAILSAFE: Sprawdzenie czy nie przekroczono limitu 15 sekund
+        if self.goal_start_time is not None:
+            elapsed_sec = (self.get_clock().now() - self.goal_start_time).nanoseconds / 1e9
+            if elapsed_sec > self.goal_timeout_sec:
+                self.get_logger().warn(
+                    f"FAILSAFE: Pojazd nie osiągnął celu w ciągu {self.goal_timeout_sec:.1f}s (upłynęło: {elapsed_sec:.2f}s)! Zatrzymuję robota do czasu podania następnego celu."
+                )
+                self.stop_robot()
+                self.goal_active = False
+                self.path_points = []
+                return
+
+        # 2. Sprawdzenie czy osiągnięto cel
         goal_x, goal_y = self.path_points[-1]
         dist_to_goal = math.hypot(goal_x - self.current_x, goal_y - self.current_y)
         if dist_to_goal < self.goal_tol:
+            self.get_logger().info(f"Cel osiągnięty (odległość: {dist_to_goal:.2f}m)! Zatrzymuję robota.")
             self.stop_robot()
+            self.goal_active = False
+            self.path_points = []
             return
 
-        # Znalezienie najbliższego punktu na ścieżce
+        # 3. Znalezienie najbliższego punktu na ścieżce
         dists = [math.hypot(p[0] - self.current_x, p[1] - self.current_y) for p in self.path_points]
         min_idx = int(np.argmin(dists))
 
@@ -187,7 +214,6 @@ class CasadiMPCNode(Node):
         step_dist = max(v_target * self.dt, 0.05)
 
         accum_dist = 0.0
-        curr_p = self.path_points[idx]
 
         for k in range(self.N):
             target_dist = (k + 1) * step_dist
@@ -212,7 +238,6 @@ class CasadiMPCNode(Node):
             res = sol['x'].full().flatten()
 
             # Odczyt pierwszego kroku sterowania: U[:, 0]
-            # U zaczyna się po (N + 1) * 4 zmiennych stanu
             u_start_idx = (self.N + 1) * 4
             a_cmd = res[u_start_idx]
             delta_cmd = res[u_start_idx + 1]
