@@ -9,57 +9,38 @@ def generate_launch_description():
     # Ścieżka do konfiguracji EKF
     ekf_config_path = os.path.join(pkg_share, 'config', 'ekf.yaml')
     
-    # Ścieżka do parametrów OV2SLAM (Euroc Mono)
+    # Ścieżka do parametrów OV2SLAM (Stereo)
     ov2slam_config_path = os.path.join(pkg_share, 'parameters_files', 'accurate', 'euroc', 'wavesshare_cam.yaml')
     
     # Ścieżka do konfiguracji RViz
     rviz_config_path = os.path.join(pkg_share, 'ov2slam_visualization.rviz') 
 
+    # Ścieżka do parametrów plannera Nav2
     planner_config_path = os.path.join(pkg_share, 'config', 'planner_server.yaml')
+
     return LaunchDescription([
-    # 0. Węzeł kamery rozdzielający obraz na left i right
+        # 0. Węzeł kamery stereo (V4L2)
+        Node(
+            package='v4l2_camera',
+            executable='v4l2_camera_node',
+            name='camera_node',
+            output='screen',
+            parameters=[{
+                'video_device': '/dev/video0',   
+                'image_size': [2560, 720],       
+                'pixel_format': 'YUYV'
+            }]
+        ),
+
+        # 1. Węzeł rozdzielający obraz na left i right
         Node(
             package='ov2slam',
             executable='stereo_publisher.py',
             name='stereo_publisher',
             output='screen'
         ),
-        
-        # 1. Węzeł IMU (MPU6050)
-        Node(
-            package='ov2slam',
-            executable='mpu6050_node',
-            name='mpu6050_node',
-            output='screen'
-        ),
-        Node(
-            package='nav2_planner',
-            executable='planner_server',
-            name='planner_server',
-            output='screen',
-            parameters=[planner_config_path]
-        ),
 
-        # Menedżer cyklu życia dla węzłów Nav2 (aktywuje planner_server)
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_planner',
-            output='screen',
-            parameters=[{
-                'use_sim_time': False,
-                'autostart': True,
-                'node_names': ['planner_server']
-            }]
-        ),
-        # wezel ogarniania path ekf_filter_node
-        Node(
-            package='ov2slam',
-            executable='path_planner_node',
-            name='path_planner',
-            output='screen',
-        ),
-        # 2. Główny węzeł OV2SLAM
+        # 2. Główny węzeł OV2SLAM (Stereo)
         Node(
             package='ov2slam',
             executable='ov2slam_node',
@@ -68,19 +49,11 @@ def generate_launch_description():
             arguments=[ov2slam_config_path]
         ),
 
-        # 3. Węzeł dodający kowariancję do pozy VO
+        # 3. Węzeł dodający kowariancję do pozy VO (konwersja układu współrzędnych)
         Node(
             package='ov2slam',
             executable='pose_cov_adder_node',
             name='pose_cov_adder_node',
-            output='screen'
-        ),
-
-        # 3b. Węzeł skali z enkoderów (nowy)
-        Node(
-            package='ov2slam',
-            executable='skala_node',
-            name='skala_node',
             output='screen'
         ),
 
@@ -101,16 +74,70 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # 6. RViz2
+        # 6. Globalny Planner Nav2 (A*)
         Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
+            package='nav2_planner',
+            executable='planner_server',
+            name='planner_server',
             output='screen',
-            arguments=['-d', rviz_config_path]
+            parameters=[planner_config_path]
         ),
 
-        # 7. Polaczenie drzewa TF (world -> odom dla Nav2)
+        # Menedżer cyklu życia dla Nav2 planner_server
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_planner',
+            output='screen',
+            parameters=[{
+                'use_sim_time': False,
+                'autostart': True,
+                'node_names': ['planner_server']
+            }]
+        ),
+
+        # Klient akcji zapytania o ścieżkę A* po otrzymaniu /goal
+        Node(
+            package='ov2slam',
+            executable='path_planner_node',
+            name='path_planner',
+            output='screen',
+        ),
+
+        # 7. Regulator CasADi MPC (śledzenie ścieżki /plan z A*)
+        Node(
+            package='ov2slam',
+            executable='casadi_mpc_node',
+            name='casadi_mpc_node',
+            output='screen',
+            parameters=[{
+                'wheelbase': 0.20,
+                'max_speed': 0.40,
+                'max_steer': 0.60,
+                'horizon_n': 10,
+                'dt': 0.1
+            }]
+        ),
+
+        # 8. Mostek sprzętowy I2C do ESP32 (silniki DC + serwo osi przedniej)
+        Node(
+            package='ov2slam',
+            executable='esp32_i2c_bridge_node',
+            name='esp32_i2c_bridge_node',
+            output='screen',
+            parameters=[{
+                'i2c_device': '/dev/i2c-1',
+                'i2c_address': 0x68,
+                'wheel_radius': 0.03525,
+                'ticks_per_rev': 660.0,
+                'servo_center': 90,
+                'servo_min': 40,
+                'servo_max': 130,
+                'servo_deg_per_rad': 45.0
+            }]
+        ),
+
+        # 9. Połączenie drzewa TF (world -> odom dla Nav2)
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
@@ -118,16 +145,12 @@ def generate_launch_description():
             arguments=['0', '0', '0', '0', '0', '0', 'world', 'odom']
         ),
 
-        # 8. Węzeł kamery
+        # 10. RViz2 (Wizualizacja)
         Node(
-            package='v4l2_camera',
-            executable='v4l2_camera_node',
-            name='camera_node',
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
             output='screen',
-            parameters=[{
-                'video_device': '/dev/video0',   
-                'image_size': [2560, 720],       
-                'pixel_format': 'YUYV'
-            }]
+            arguments=['-d', rviz_config_path]
         )
     ])
