@@ -219,5 +219,12 @@ int main(int argc, char** argv)
         std::this_thread::sleep_for(dura);
     }
 
+    if (sync_thread.joinable()) {
+        sync_thread.join();
+    }
+    if (slamthread.joinable()) {
+        slamthread.join();
+    }
+
     return 0;
 }

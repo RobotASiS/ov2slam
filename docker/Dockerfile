@@ -5,11 +5,13 @@ ARG BASE_IMAGE=ros:${ROS_DISTRO}-ros-core
 FROM $BASE_IMAGE
 
 RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y curl \
-    && sh -c 'echo "deb [arch=amd64,arm64] http://repo.ros2.org/ubuntu/main `lsb_release -cs` main" > /etc/apt/sources.list.d/ros2-latest.list' \
-    && curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates \
+    && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && . /etc/os-release \
+    && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://repo.ros2.org/ubuntu/main ${UBUNTU_CODENAME} main" > /etc/apt/sources.list.d/ros2-latest.list \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt update \
+RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     python3-colcon-common-extensions build-essential cmake pkg-config git \
     && rm -rf /var/lib/apt/lists/*
@@ -113,7 +115,8 @@ RUN mkdir build install && cd build \
 WORKDIR /ws/src/ov2slam/Thirdparty/casadi
 RUN mkdir build install && cd build \
     && cmake .. -D CMAKE_BUILD_TYPE=Release \
-    && make -j`nproc` install
+    && make -j`nproc` install \
+    && ldconfig
 
 ##############
 ### OpenGV ###
@@ -152,7 +155,7 @@ RUN mkdir build install && cd build/ \
 ################
 ### OBIndex2 ###
 ################
-RUN apt update \
+RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-system-dev libboost-filesystem-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -174,7 +177,7 @@ RUN mkdir build && cd build/ \
 ### cv_bridge ###
 #################
 WORKDIR /ws
-RUN apt update \
+RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         libboost-python-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -185,7 +188,7 @@ RUN . /opt/ros/$ROS_DISTRO/setup.sh && colcon build --symlink-install --packages
 ###############
 ### OV²SLAM ###
 ###############
-RUN apt update \
+RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         ros-${ROS_DISTRO}-image-transport \
         libpcl-dev \
@@ -206,8 +209,8 @@ RUN apt update \
         ros-${ROS_DISTRO}-v4l2-camera \
         libglfw3-dev \
         libgl1-mesa-dev \
-        libcasadi-dev \
-        python3-casadi \
+        python3-pip \
+    && pip3 install --no-cache-dir casadi \
     && rm -rf /var/lib/apt/lists/*
 
 ADD . /ws/src/ov2slam

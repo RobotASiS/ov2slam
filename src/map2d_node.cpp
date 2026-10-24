@@ -321,7 +321,7 @@ int main(int argc, char** argv) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    while (!glfwWindowShouldClose(window)) {
+    while (rclcpp::ok() && !glfwWindowShouldClose(window)) {
         glfwPollEvents();
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -347,6 +347,8 @@ int main(int argc, char** argv) {
     glfwDestroyWindow(window);
     glfwTerminate();
 
-    rclcpp::shutdown();
+    if (rclcpp::ok()) {
+        rclcpp::shutdown();
+    }
     return 0;
 }
