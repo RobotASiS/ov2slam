@@ -299,23 +299,52 @@ else()
   message(WARNING "GLFW3 or OpenGL not found — map2d_node will NOT be built")
 endif()
 
-# Dodanie naszego noda IMU
-add_executable(mpu6050_node src/mpu6050_node.cpp)
-ament_target_dependencies(mpu6050_node rclcpp sensor_msgs)
-
+# Mostek I2C do ESP32
+add_executable(esp32_i2c_bridge_node src/esp32_i2c_bridge.cpp)
+ament_target_dependencies(esp32_i2c_bridge_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  std_msgs
+)
 install(TARGETS
-  mpu6050_node
+  esp32_i2c_bridge_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Regulator CasADi MPC (C++)
+find_package(casadi QUIET)
+if(NOT casadi_FOUND)
+  find_library(CASADI_LIB NAMES casadi PATHS /usr/local/lib /usr/lib)
+  find_path(CASADI_INCLUDE_DIR NAMES casadi/casadi.hpp PATHS /usr/local/include /usr/include)
+  if(CASADI_LIB AND CASADI_INCLUDE_DIR)
+    set(casadi_FOUND TRUE)
+    add_library(casadi UNKNOWN IMPORTED)
+    set_target_properties(casadi PROPERTIES
+      IMPORTED_LOCATION "${CASADI_LIB}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CASADI_INCLUDE_DIR}"
+    )
+  endif()
+endif()
 
-add_executable(skala_node src/skala_node.cpp)
-ament_target_dependencies(skala_node rclcpp std_msgs nav_msgs geometry_msgs)
-
-install(TARGETS
-  skala_node
-  DESTINATION lib/${PROJECT_NAME}
-)
+if(casadi_FOUND)
+  message(STATUS "Found CasADi C++ — building casadi_mpc_node")
+  add_executable(casadi_mpc_node src/casadi_mpc_node.cpp)
+  ament_target_dependencies(casadi_mpc_node
+    rclcpp
+    geometry_msgs
+    nav_msgs
+    tf2
+    tf2_geometry_msgs
+  )
+  target_link_libraries(casadi_mpc_node casadi)
+  install(TARGETS
+    casadi_mpc_node
+    DESTINATION lib/${PROJECT_NAME}
+  )
+else()
+  message(STATUS "CasADi C++ not found; Python casadi_mpc_node.py will be installed")
+endif()
 
 add_executable(pose_cov_adder_node src/pose_cov_adder.cpp)
 ament_target_dependencies(pose_cov_adder_node 
@@ -344,7 +373,9 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(PROGRAMS scripts/stereo_publisher.py
+install(PROGRAMS
+  scripts/stereo_publisher.py
+  scripts/casadi_mpc_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

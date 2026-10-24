@@ -206,6 +206,8 @@ RUN apt update \
         ros-${ROS_DISTRO}-v4l2-camera \
         libglfw3-dev \
         libgl1-mesa-dev \
+        libcasadi-dev \
+        python3-casadi \
     && rm -rf /var/lib/apt/lists/*
 
 ADD . /ws/src/ov2slam

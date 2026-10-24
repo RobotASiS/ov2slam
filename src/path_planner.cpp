@@ -27,6 +27,8 @@ public:
             this, "compute_path_to_pose"
         );
 
+        path_pub = this->create_publisher<nav_msgs::msg::Path>("/plan", 10);
+
         this->timer_ = this->create_wall_timer(
             200ms, std::bind(&PathPlanner::create_path, this)
         );
@@ -96,11 +98,14 @@ private:
             RCLCPP_INFO(this->get_logger(), "Start: [%.2f, %.2f] -> Koniec: [%.2f, %.2f]",
                         start_point.x, start_point.y, end_point.x, end_point.y);
         }
+
+        path_pub->publish(path);
     }
 
     geometry_msgs::msg::PoseStamped goal;
     bool has_goal = false;
     bool goal_in_progress_ = false;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub;
     rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SharedPtr action_client;    
     rclcpp::TimerBase::SharedPtr timer_;

@@ -29,11 +29,6 @@ public:
         odom_sub = this->create_subscription<nav_msgs::msg::Odometry>(
             "/odometry/filtered", 10, std::bind(&MapperNode::odom_callback, this, std::placeholders::_1));
 
-        
-        scale_sub_ = this->create_subscription<std_msgs::msg::Float32>(
-            "/slam_scale", 10, [this](const std_msgs::msg::Float32::SharedPtr msg) {
-                current_scale = msg->data;
-            });
         map_pub = this->create_publisher<nav_msgs::msg::OccupancyGrid>(
             "/map", 10);
         grid_map.assign(width_map * height_map, 0);
@@ -276,20 +271,11 @@ private:
                 grid_map[i] = point_counts[i]; 
             }
         }
-
-        // TESTOWY KWADRAT (przesuniety 50cm przed robota: X 155..185, Y 105..145)
-        for (int y = 105; y < 145; ++y) {
-            for (int x = 155; x < 185; ++x) {
-                int index = (y * width_map) + x;
-                grid_map[index] = 100;
-            }
-        }
     }
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
-    rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr scale_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub;
