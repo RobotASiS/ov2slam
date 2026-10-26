@@ -41,6 +41,7 @@ public:
         this->declare_parameter<int>("servo_max", 130);            // max bezpieczny kąt [st.]
         this->declare_parameter<double>("servo_deg_per_rad", 45.0);// współczynnik przeliczenia rad -> st.
         this->declare_parameter<bool>("invert_steering", false);
+        this->declare_parameter<bool>("invert_left_motor", true);
         this->declare_parameter<int>("cmd_timeout_ms", 500);       // watchdog zatrzymania silników
 
         i2c_device_ = this->get_parameter("i2c_device").as_string();
@@ -54,6 +55,7 @@ public:
         servo_max_ = this->get_parameter("servo_max").as_int();
         servo_deg_per_rad_ = this->get_parameter("servo_deg_per_rad").as_double();
         invert_steering_ = this->get_parameter("invert_steering").as_bool();
+        invert_left_motor_ = this->get_parameter("invert_left_motor").as_bool();
         cmd_timeout_ms_ = this->get_parameter("cmd_timeout_ms").as_int();
 
         init_i2c();
@@ -96,6 +98,7 @@ private:
     int servo_max_;
     double servo_deg_per_rad_;
     bool invert_steering_;
+    bool invert_left_motor_;
     int cmd_timeout_ms_;
 
     int i2c_fd_;
@@ -154,7 +157,7 @@ private:
             right_ticks_per_sec = static_cast<int32_t>(std::round((v_r / circumference) * ticks_per_rev_));
         }
 
-        current_frame_rpi_.left_motor_speed = left_ticks_per_sec;
+        current_frame_rpi_.left_motor_speed = (invert_left_motor_ ? -1 : 1) * left_ticks_per_sec;
         current_frame_rpi_.right_motor_speed = right_ticks_per_sec;
         current_frame_rpi_.servo_pos = target_servo;
     }
@@ -190,7 +193,7 @@ private:
             ssize_t bytes_read = read(i2c_fd_, &esp_frame, sizeof(esp_frame));
             if (bytes_read == sizeof(esp_frame)) {
                 auto enc_msg = std_msgs::msg::Int64MultiArray();
-                enc_msg.data = {esp_frame.left_encoder_pos, esp_frame.right_encoder_pos};
+                enc_msg.data = {(invert_left_motor_ ? -1 : 1) * esp_frame.left_encoder_pos, esp_frame.right_encoder_pos};
                 encoder_pub_->publish(enc_msg);
             } else {
                 RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
