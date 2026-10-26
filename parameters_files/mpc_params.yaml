@@ -13,5 +13,4 @@ mpc_node:
     r_v: 0.5
     r_psi: 0.5
     psi_max_deg: 35.0
-    goal_timeout_sec: 15.0
     publish_steering_angle: true
