@@ -341,7 +341,6 @@ install(FILES
 )
 install(PROGRAMS 
   src/MPC.py
-  src/sim_robot.py
   DESTINATION lib/${PROJECT_NAME})
 
 install(PROGRAMS
