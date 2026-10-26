@@ -18,6 +18,9 @@ def generate_launch_description():
     # Ścieżka do parametrów plannera Nav2
     planner_config_path = os.path.join(pkg_share, 'config', 'planner_server.yaml')
 
+    # Ścieżka do parametrów regulatora MPC
+    mpc_config_path = os.path.join(pkg_share, 'parameters_files', 'mpc_params.yaml')
+
     return LaunchDescription([
         # 0. Węzeł kamery stereo (V4L2)
         Node(
@@ -104,20 +107,13 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # 7. Regulator CasADi MPC (śledzenie ścieżki /plan z A*)
+        # 7. Regulator CasADi MPC (Python)
         Node(
             package='ov2slam',
-            executable='casadi_mpc_node',
-            name='casadi_mpc_node',
+            executable='MPC.py',
+            name='mpc_node',
             output='screen',
-            parameters=[{
-                'wheelbase': 0.20,
-                'max_speed': 0.40,
-                'max_steer': 0.60,
-                'horizon_n': 10,
-                'dt': 0.1,
-                'goal_timeout_sec': 15.0
-            }]
+            parameters=[mpc_config_path]
         ),
 
         # 8. Mostek sprzętowy I2C do ESP32 (silniki DC + serwo osi przedniej)

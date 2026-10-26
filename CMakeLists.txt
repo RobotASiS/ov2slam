@@ -312,40 +312,6 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Regulator CasADi MPC (C++)
-find_package(casadi QUIET)
-if(NOT casadi_FOUND)
-  find_library(CASADI_LIB NAMES casadi PATHS /usr/local/lib /usr/lib)
-  find_path(CASADI_INCLUDE_DIR NAMES casadi/casadi.hpp PATHS /usr/local/include /usr/include)
-  if(CASADI_LIB AND CASADI_INCLUDE_DIR)
-    set(casadi_FOUND TRUE)
-    add_library(casadi UNKNOWN IMPORTED)
-    set_target_properties(casadi PROPERTIES
-      IMPORTED_LOCATION "${CASADI_LIB}"
-      INTERFACE_INCLUDE_DIRECTORIES "${CASADI_INCLUDE_DIR}"
-    )
-  endif()
-endif()
-
-if(casadi_FOUND)
-  message(STATUS "Found CasADi C++ — building casadi_mpc_node")
-  add_executable(casadi_mpc_node src/casadi_mpc_node.cpp)
-  ament_target_dependencies(casadi_mpc_node
-    rclcpp
-    geometry_msgs
-    nav_msgs
-    tf2
-    tf2_geometry_msgs
-  )
-  target_link_libraries(casadi_mpc_node casadi)
-  install(TARGETS
-    casadi_mpc_node
-    DESTINATION lib/${PROJECT_NAME}
-  )
-else()
-  message(STATUS "CasADi C++ not found; Python casadi_mpc_node.py will be installed")
-endif()
-
 add_executable(pose_cov_adder_node src/pose_cov_adder.cpp)
 ament_target_dependencies(pose_cov_adder_node 
   rclcpp 
@@ -355,6 +321,7 @@ ament_target_dependencies(pose_cov_adder_node
   tf2 
   tf2_geometry_msgs
 )
+
 
 install(TARGETS
   pose_cov_adder_node
@@ -372,10 +339,13 @@ install(FILES
   ov2slam_visualization.rviz
   DESTINATION share/${PROJECT_NAME}
 )
+install(PROGRAMS 
+  src/MPC.py
+  src/sim_robot.py
+  DESTINATION lib/${PROJECT_NAME})
 
 install(PROGRAMS
   scripts/stereo_publisher.py
-  scripts/casadi_mpc_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
