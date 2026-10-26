@@ -33,6 +33,8 @@ class MPCNode(Node):
         self.declare_parameter('r_v', 0.5)
         self.declare_parameter('r_psi', 0.5)
         self.declare_parameter('psi_max_deg', 35.0)
+        self.declare_parameter('goal_timeout_sec', 15.0)
+        self.declare_parameter('publish_steering_angle', True)
 
         self.N = self.get_parameter('horizon_N').value
         self.dt = self.get_parameter('dt').value
@@ -47,6 +49,8 @@ class MPCNode(Node):
         self.r_v = self.get_parameter('r_v').value
         self.r_psi = self.get_parameter('r_psi').value
         self.psi_max_deg = self.get_parameter('psi_max_deg').value
+        self.goal_timeout_sec = self.get_parameter('goal_timeout_sec').value
+        self.publish_steering_angle = self.get_parameter('publish_steering_angle').value
 
         self.sub_odom = self.create_subscription(
             Odometry,
@@ -65,11 +69,14 @@ class MPCNode(Node):
 
         self.current_pose = None
         self.current_path = None
+        self.goal_start_time = None
         self.step_count = 0
 
         self.init_solver()
         self.timer = self.create_timer(self.dt, self.control_loop)
-        self.get_logger().info(f' Horizon N={self.N}, dt={self.dt}s, v_max={self.v_max}m/s')
+        self.get_logger().info(
+            f' Horizon N={self.N}, dt={self.dt}s, v_max={self.v_max}m/s, Failsafe={self.goal_timeout_sec}s, Ackermann_steer={self.publish_steering_angle}'
+        )
 
     def init_solver(self):
         x = ca.SX.sym('x')
@@ -146,8 +153,16 @@ class MPCNode(Node):
         self.current_pose = msg.pose.pose
 
     def path_callback(self, msg: Path):
-        self.current_path = msg.poses
-        self.get_logger().info(f'MPC received new reference path with {len(msg.poses)} waypoints.')
+        if len(msg.poses) >= 2:
+            self.current_path = msg.poses
+            self.goal_start_time = self.get_clock().now()
+            self.get_logger().info(
+                f'MPC received new reference path with {len(msg.poses)} waypoints. Failsafe timeout: {self.goal_timeout_sec}s.'
+            )
+        else:
+            self.current_path = None
+            self.goal_start_time = None
+            self.pub_cmd_vel.publish(Twist())
 
     def sample_reference_trajectory(self, current_x, current_y, current_yaw):
         if not self.current_path:
@@ -205,6 +220,18 @@ class MPCNode(Node):
         if self.current_pose is None or self.current_path is None:
             return
 
+        # Failsafe: zatrzymanie jeśli cel nie zostanie osiągnięty w zadanym limicie czasu
+        if self.goal_start_time is not None and self.goal_timeout_sec > 0.0:
+            elapsed_sec = (self.get_clock().now() - self.goal_start_time).nanoseconds / 1e9
+            if elapsed_sec > self.goal_timeout_sec:
+                self.get_logger().warn(
+                    f'FAILSAFE ZADZIAŁAŁ: Robot nie osiągnął celu w ciągu {self.goal_timeout_sec:.1f} s! Zatrzymanie napędu.'
+                )
+                self.pub_cmd_vel.publish(Twist())
+                self.current_path = None
+                self.goal_start_time = None
+                return
+
         robot_x = self.current_pose.position.x
         robot_y = self.current_pose.position.y
         robot_yaw = get_yaw_from_quaternion(self.current_pose.orientation)
@@ -219,6 +246,7 @@ class MPCNode(Node):
             if self.current_path is not None:
                 self.get_logger().info('Goal reached! Robot stopped.')
                 self.current_path = None
+                self.goal_start_time = None
             return
 
         p_val = np.hstack([[robot_x, robot_y, robot_yaw], ref_traj.flatten()])
@@ -233,7 +261,8 @@ class MPCNode(Node):
         omega_cmd = (v_cmd / self.L) * np.tan(psi_cmd)
 
         cmd.linear.x = v_cmd
-        cmd.angular.z = omega_cmd
+        # Dla podwozia Ackermanna i mostka esp32_i2c_bridge_node wysyłamy kąt skrętu [rad]
+        cmd.angular.z = psi_cmd if self.publish_steering_angle else omega_cmd
 
         self.pub_cmd_vel.publish(cmd)
 
