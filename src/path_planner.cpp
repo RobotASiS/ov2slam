@@ -45,6 +45,7 @@ private:
             return;
         }
 
+        has_goal = false;
         ComputePathToPose::Goal goal_path;
         goal_path.goal = this->goal;
         goal_path.goal.header.stamp = this->now();

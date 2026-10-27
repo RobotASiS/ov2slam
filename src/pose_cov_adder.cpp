@@ -34,10 +34,18 @@ private:
             msg->pose.orientation.w
         );
 
-        tf2::Quaternion q_rot;
-        q_rot.setRPY(-M_PI/2.0, 0, -M_PI/2.0); 
-        
-        tf2::Quaternion q_final = q_rot * q_orig;
+        // Przekształcenie rotacji z układu kamery do układu robota ROS (REP-103)
+        // Z_cam -> X_ros (przód), -X_cam -> Y_ros (lewo), -Y_cam -> Z_ros (góra)
+        tf2::Matrix3x3 R_cam(q_orig);
+        tf2::Matrix3x3 R_c2r(
+             0.0,  0.0,  1.0,
+            -1.0,  0.0,  0.0,
+             0.0, -1.0,  0.0
+        );
+        tf2::Matrix3x3 R_body = R_c2r * R_cam * R_c2r.transpose();
+        tf2::Quaternion q_final;
+        R_body.getRotation(q_final);
+        q_final.normalize();
         
         odom_msg.pose.pose.orientation.x = q_final.x();
         odom_msg.pose.pose.orientation.y = q_final.y();
