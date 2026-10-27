@@ -36,10 +36,10 @@ public:
         this->declare_parameter<double>("ticks_per_rev", 660.0);   // impulsy na obrót koła
         this->declare_parameter<double>("wheelbase", 0.20);        // [m] rozstaw osi L
         this->declare_parameter<double>("track_width", 0.15);      // [m] rozstaw kół W
-        this->declare_parameter<int>("servo_center", 90);          // kąt neutralny [st.]
-        this->declare_parameter<int>("servo_min", 40);             // min bezpieczny kąt [st.]
-        this->declare_parameter<int>("servo_max", 130);            // max bezpieczny kąt [st.]
-        this->declare_parameter<double>("servo_deg_per_rad", 45.0);// współczynnik przeliczenia rad -> st.
+        this->declare_parameter<int>("servo_center", 90);          // kąt neutralny [st.] (środek pomiędzy 50 a 130)
+        this->declare_parameter<int>("servo_min", 50);             // min bezpieczny kąt [st.] (max prawo: 50 st.)
+        this->declare_parameter<int>("servo_max", 130);            // max bezpieczny kąt [st.] (max lewo: 130 st.)
+        this->declare_parameter<double>("servo_deg_per_rad", 57.3);// współczynnik przeliczenia rad -> st. (180/pi)
         this->declare_parameter<bool>("invert_steering", false);
         this->declare_parameter<bool>("invert_left_motor", true);
         this->declare_parameter<int>("cmd_timeout_ms", 500);       // watchdog zatrzymania silników

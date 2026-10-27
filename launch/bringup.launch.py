@@ -128,9 +128,11 @@ def generate_launch_description():
                 'wheel_radius': 0.03525,
                 'ticks_per_rev': 660.0,
                 'servo_center': 90,
-                'servo_min': 40,
+                'servo_min': 50,
                 'servo_max': 130,
-                'servo_deg_per_rad': 45.0
+                'servo_deg_per_rad': 57.3,
+                'invert_steering': False,
+                'invert_left_motor': True
             }]
         ),
 
