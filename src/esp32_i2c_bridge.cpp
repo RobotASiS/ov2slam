@@ -41,7 +41,7 @@ public:
         this->declare_parameter<int>("servo_max", 130);            // max bezpieczny kąt [st.] (max lewo: 130 st.)
         this->declare_parameter<double>("servo_deg_per_rad", 57.3);// współczynnik przeliczenia rad -> st. (180/pi)
         this->declare_parameter<bool>("invert_steering", false);
-        this->declare_parameter<bool>("invert_left_motor", true);
+        this->declare_parameter<bool>("invert_left_motor", false);
         this->declare_parameter<int>("cmd_timeout_ms", 500);       // watchdog zatrzymania silników
 
         i2c_device_ = this->get_parameter("i2c_device").as_string();

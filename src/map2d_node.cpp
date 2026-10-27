@@ -12,6 +12,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <vector>
+#include <cmath>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
@@ -74,10 +75,15 @@ public:
         int robot_grid_y = static_cast<int>((ry + (map_size / 2.0f)) / resolution);
 
         if (robot_grid_x >= 0 && robot_grid_x < width_map && robot_grid_y >= 0 && robot_grid_y < height_map) {
-            draw_list->AddCircleFilled(
-                ImVec2(p.x + robot_grid_x * cell_draw_size + (cell_draw_size / 2.0f), p.y + robot_grid_y * cell_draw_size + (cell_draw_size / 2.0f)),
-                cell_draw_size * 0.8f,
-                IM_COL32(0, 255, 0, 255));
+            ImVec2 center(p.x + robot_grid_x * cell_draw_size + (cell_draw_size / 2.0f),
+                          p.y + robot_grid_y * cell_draw_size + (cell_draw_size / 2.0f));
+            draw_list->AddCircleFilled(center, cell_draw_size * 0.8f, IM_COL32(0, 255, 0, 255));
+
+            // Czerwona kreska wskazująca przód (orientację yaw) robota
+            float heading_length = cell_draw_size * 4.0f;
+            ImVec2 heading_end(center.x + std::cos(pose_yaw) * heading_length,
+                               center.y + std::sin(pose_yaw) * heading_length);
+            draw_list->AddLine(center, heading_end, IM_COL32(255, 0, 0, 255), 2.5f);
         }
 
         ImGui::InvisibleButton("map", ImVec2(width_map * cell_draw_size, height_map * cell_draw_size));
@@ -94,6 +100,8 @@ public:
             ImVec2 screen_pos = this->pose_to_grid(pose_stamped, p);
             draw_list->AddCircleFilled(screen_pos, cell_draw_size * 0.5f, IM_COL32(0, 200, 255, 255)); 
         }
+        ImGui::Text("Pozycja robota: X=%.2f m, Y=%.2f m, Yaw=%.1f deg", pose_x, pose_y, pose_yaw * 180.0f / M_PI);
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Czerwona linia = przod (+X w prawo na ekranie)");
         ImGui::End();
     }
 
@@ -197,6 +205,10 @@ private:
     void odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg) {
         pose_x = msg->pose.pose.position.x;
         pose_y = msg->pose.pose.position.y; 
+        const auto & q = msg->pose.pose.orientation;
+        double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+        double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+        pose_yaw = std::atan2(siny_cosp, cosy_cosp);
     }
 
    
@@ -277,6 +289,7 @@ private:
     nav_msgs::msg::Path path;
     float pose_x = 0.0f;
     float pose_y = 0.0f;
+    float pose_yaw = 0.0f;
     float current_scale = 1.0f;
     const float cam_height = 0.092f; 
 };
