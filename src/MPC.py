@@ -34,6 +34,7 @@ class MPCNode(Node):
         self.declare_parameter('r_psi', 0.5)
         self.declare_parameter('psi_max_deg', 35.0)
         self.declare_parameter('publish_steering_angle', True)
+        self.declare_parameter('cam_offset_x', 0.0)
 
         self.N = self.get_parameter('horizon_N').value
         self.dt = self.get_parameter('dt').value
@@ -49,6 +50,7 @@ class MPCNode(Node):
         self.r_psi = self.get_parameter('r_psi').value
         self.psi_max_deg = self.get_parameter('psi_max_deg').value
         self.publish_steering_angle = self.get_parameter('publish_steering_angle').value
+        self.cam_offset_x = self.get_parameter('cam_offset_x').value
 
         self.sub_odom = self.create_subscription(
             Odometry,
@@ -218,6 +220,9 @@ class MPCNode(Node):
         robot_x = self.current_pose.position.x
         robot_y = self.current_pose.position.y
         robot_yaw = get_yaw_from_quaternion(self.current_pose.orientation)
+        # odometria to poza kamery (punkt K), model liczy wzgledem srodka tylnej osi (punkt P)
+        robot_x -= self.cam_offset_x * np.cos(robot_yaw)
+        robot_y -= self.cam_offset_x * np.sin(robot_yaw)
 
         ref_traj, v_target, goal_reached = self.sample_reference_trajectory(
             robot_x, robot_y, robot_yaw

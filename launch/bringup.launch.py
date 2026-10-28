@@ -125,8 +125,10 @@ def generate_launch_description():
             parameters=[{
                 'i2c_device': '/dev/i2c-1',
                 'i2c_address': 0x68,
-                'wheel_radius': 0.03525,
-                'ticks_per_rev': 660.0,
+                'wheel_radius': 0.035,
+                'ticks_per_rev': 1000.0,
+                'wheelbase': 0.2165,
+                'track_width': 0.183,
                 'servo_center': 90,
                 'servo_min': 50,
                 'servo_max': 130,
