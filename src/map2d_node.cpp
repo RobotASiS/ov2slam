@@ -233,7 +233,7 @@ private:
 
         for (size_t i = 0; i < point_counts.size(); ++i) {
             if (point_counts[i] >= 3) { 
-                grid_map[i] = point_counts[i]; 
+                grid_map[i] = static_cast<int8_t>(std::min(point_counts[i], 127)); // int8_t max
             }
         }
     }
