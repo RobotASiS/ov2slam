@@ -333,6 +333,14 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+add_executable(wheel_vel_manager_node src/wheel_vel_manager.cpp)
+ament_target_dependencies(wheel_vel_manager_node rclcpp geometry_msgs)
+
+install(TARGETS
+  wheel_vel_manager_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY
   launch
   config
@@ -346,7 +354,6 @@ install(FILES
 )
 install(PROGRAMS 
   src/MPC.py
-  src/sim_robot.py
   DESTINATION lib/${PROJECT_NAME})
 
 ament_package()

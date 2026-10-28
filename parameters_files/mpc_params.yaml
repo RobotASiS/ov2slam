@@ -2,8 +2,8 @@ mpc_node:
   ros__parameters:
     horizon_N: 20
     dt: 0.1
-    wheelbase: 0.25
-    v_max: 0.3
+    wheelbase: 0.2165
+    v_max: 0.25
     d_slowdown: 0.8
     goal_tolerance: 0.08
     mode: 0
@@ -12,4 +12,16 @@ mpc_node:
     q_theta: 1.0
     r_v: 0.5
     r_psi: 0.5
-    psi_max_deg: 35.0
+    psi_max_deg: 30.0
+    cam_offset_x: 0.2165
+
+wheel_vel_manager:
+  ros__parameters:
+    track_width: 0.183
+    wheelbase: 0.2165
+    i2c_device: "/dev/i2c-1"
+    i2c_address: 0x68
+    wheel_diameter: 0.070
+    ticks_per_rev: 1000.0
+    servo_center_deg: 90.0
+    timeout_sec: 0.5

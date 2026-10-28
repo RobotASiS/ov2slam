@@ -131,4 +131,11 @@ def generate_launch_description():
             name='mpc_node',
             parameters=[mpc_config_path]
         ),
+        Node(
+            package='ov2slam',
+            executable='wheel_vel_manager_node',
+            name='wheel_vel_manager',
+            output='screen',
+            parameters=[mpc_config_path]
+        ),
     ])
