@@ -134,7 +134,7 @@ def generate_launch_description():
                 'servo_max': 130,
                 'servo_deg_per_rad': 57.3,
                 'invert_steering': False,
-                'invert_left_motor': False
+                'invert_left_motor': True
             }]
         ),
 

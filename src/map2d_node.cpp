@@ -3,7 +3,6 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/occupancy_grid.hpp"
-#include "sensor_msgs/msg/imu.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -13,12 +12,8 @@
 #include <pcl/point_types.h>
 #include <vector>
 #include <cmath>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
-#include <pcl/filters/statistical_outlier_removal.h>
+// #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/common/transforms.h>
-#include "std_msgs/msg/float32.hpp"
 #include "nav_msgs/msg/path.hpp"
 
 class MapperNode : public rclcpp::Node {
@@ -37,9 +32,6 @@ public:
             "/goal",10);
         path_sub = this->create_subscription<nav_msgs::msg::Path>(
             "/plan", 10, std::bind(&MapperNode::path_callback, this, std::placeholders::_1));
-        tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-        tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-
     }
 
     void draw_gui() {
@@ -161,19 +153,15 @@ private:
         pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::fromROSMsg(*msg, *pcl_cloud);
 
+        // Uklad kamery (Z przod, X prawo, Y dol) -> ROS (X przod, Y lewo, Z gora)
         Eigen::Affine3f transform = Eigen::Affine3f::Identity();
-    
-        if (is_calibrated) {
-            transform.rotate(Eigen::AngleAxisf(-calib_yaw, Eigen::Vector3f::UnitZ()));
-        }
-        
         transform.rotate(Eigen::AngleAxisf(-M_PI/2.0, Eigen::Vector3f::UnitZ()));
         transform.rotate(Eigen::AngleAxisf(-M_PI/2.0, Eigen::Vector3f::UnitX()));
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         pcl::transformPointCloud(*pcl_cloud, *transformed_cloud, transform);
 
-        // Usuwamy NaN, Inf oraz punkty (0,0,0) przed filtrem SOR
+        // Usuwamy NaN, Inf oraz punkty (0,0,0) - tak SLAM oznacza usuniete landmarki
         pcl::PointCloud<pcl::PointXYZ>::Ptr clean_cloud(new pcl::PointCloud<pcl::PointXYZ>());
         clean_cloud->points.reserve(transformed_cloud->points.size());
         for (const auto& pt : transformed_cloud->points) {
@@ -184,21 +172,18 @@ private:
             }
         }
 
-        if (clean_cloud->points.size() < 20) {
-            mapping(clean_cloud);
-            NavMap();
-            return;
-        }
-        
-        // Filtracja szumow (Statistical Outlier Removal)
-        pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-        pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-        sor.setInputCloud(clean_cloud);
-        sor.setMeanK(std::min(20, static_cast<int>(clean_cloud->points.size() - 1)));             
-        sor.setStddevMulThresh(1.0);  
-        sor.filter(*filtered_cloud);
+        // Filtracja szumow (Statistical Outlier Removal) - na razie wylaczona, wycinala za duzo punktow
+        // if (clean_cloud->points.size() >= 20) {
+        //     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered_cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        //     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+        //     sor.setInputCloud(clean_cloud);
+        //     sor.setMeanK(20);
+        //     sor.setStddevMulThresh(1.0);
+        //     sor.filter(*filtered_cloud);
+        //     clean_cloud = filtered_cloud;
+        // }
 
-        mapping(filtered_cloud);
+        mapping(clean_cloud);
         NavMap();
     }
 
@@ -229,21 +214,14 @@ private:
         std::vector<int> point_counts(width_map * height_map, 0);
 
         for (auto& point : cloud->points) {
-            // Ignorujemy zresetowane punkty (0,0,0) ze SLAM-u
-            if (std::abs(point.x) < 0.01f && std::abs(point.y) < 0.01f) {
+            // Wysokosc nad podloga: SLAM liczy z od kamery
+            float z_floor = point.z + cam_height;
+            if (z_floor < min_obstacle_height || z_floor > max_obstacle_height) {
                 continue;
             }
 
-            float px = point.x * current_scale;
-            float py = point.y * current_scale;
-            float pz = point.z * current_scale;
-            
-            if (pz < -0.02 || pz > 0.3) {
-                continue;
-            }
-
-            int grid_x = static_cast<int>((px + (map_size / 2.0)) / resolution);
-            int grid_y = static_cast<int>((py + (map_size / 2.0)) / resolution);
+            int grid_x = static_cast<int>((point.x + (map_size / 2.0)) / resolution);
+            int grid_y = static_cast<int>((point.y + (map_size / 2.0)) / resolution);
 
             if (grid_x < 0 || grid_x >= width_map || grid_y < 0 || grid_y >= height_map) {
                 continue;
@@ -262,36 +240,27 @@ private:
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
-    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub;
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-    float slam_height_est = -1.0f;
-    
-    // Zmienne kalibracyjne
-    bool is_calibrated = false;
-    bool has_initial_pose = false;
-    float initial_pose_x = 0.0f;
-    float initial_pose_y = 0.0f;
-    float calib_yaw = 0.0f;
 
-    // Zwiekszona rozdzielczosc mapy
-    const uint32_t width_map = 250;
-    const uint32_t height_map = 250;
-    const float map_size = 4.0f; 
+    // Mapa 4 x 4 m, komorka 5 cm
+    const int width_map = 80;
+    const int height_map = 80;
+    const float map_size = 4.0f;
     const float resolution = map_size / width_map;
-    const float cell_draw_size = 3.0f;
-    const int rows = map_size / resolution;
-    
+    const float cell_draw_size = 10.0f;
+
+    // Przeszkody liczone od podlogi [m]
+    const float cam_height = 0.092f;
+    const float min_obstacle_height = 0.03f;
+    const float max_obstacle_height = 0.50f;
+
     std::vector<int8_t> grid_map;
     nav_msgs::msg::Path path;
     float pose_x = 0.0f;
     float pose_y = 0.0f;
     float pose_yaw = 0.0f;
-    float current_scale = 1.0f;
-    const float cam_height = 0.092f; 
 };
 
 int main(int argc, char** argv) {
