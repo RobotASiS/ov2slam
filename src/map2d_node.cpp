@@ -53,8 +53,8 @@ public:
                 }
 
                 draw_list->AddRectFilled(
-                    ImVec2(p.x + (x * cell_draw_size), p.y + (y * cell_draw_size)),
-                    ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((y + 1) * cell_draw_size)),
+                    ImVec2(p.x + (x * cell_draw_size), p.y + ((height_map - 1 - y) * cell_draw_size)),
+                    ImVec2(p.x + ((x + 1) * cell_draw_size), p.y + ((height_map - y) * cell_draw_size)),
                     color);
 
             }
@@ -68,13 +68,13 @@ public:
 
         if (robot_grid_x >= 0 && robot_grid_x < width_map && robot_grid_y >= 0 && robot_grid_y < height_map) {
             ImVec2 center(p.x + robot_grid_x * cell_draw_size + (cell_draw_size / 2.0f),
-                          p.y + robot_grid_y * cell_draw_size + (cell_draw_size / 2.0f));
+                          p.y + (height_map - 1 - robot_grid_y) * cell_draw_size + (cell_draw_size / 2.0f));
             draw_list->AddCircleFilled(center, cell_draw_size * 0.8f, IM_COL32(0, 255, 0, 255));
 
             // Czerwona kreska wskazująca przód (orientację yaw) robota
             float heading_length = cell_draw_size * 4.0f;
             ImVec2 heading_end(center.x + std::cos(pose_yaw) * heading_length,
-                               center.y + std::sin(pose_yaw) * heading_length);
+                               center.y - std::sin(pose_yaw) * heading_length);
             draw_list->AddLine(center, heading_end, IM_COL32(255, 0, 0, 255), 2.5f);
         }
 
@@ -82,7 +82,7 @@ public:
         if(ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
           ImVec2 mouse_pos = ImGui::GetIO().MousePos;
           int clicked_grid_x = static_cast<int>((mouse_pos.x - p.x) / cell_draw_size);
-          int clicked_grid_y = static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
+          int clicked_grid_y = height_map - 1 - static_cast<int>((mouse_pos.y - p.y) / cell_draw_size);
           if (clicked_grid_x >= 0 && clicked_grid_x < width_map && clicked_grid_y >= 0 && clicked_grid_y < height_map) {
               int clicked_index = (clicked_grid_y * width_map) + clicked_grid_x;
               this->publish_goal(clicked_index);
@@ -93,7 +93,7 @@ public:
             draw_list->AddCircleFilled(screen_pos, cell_draw_size * 0.5f, IM_COL32(0, 200, 255, 255)); 
         }
         ImGui::Text("Pozycja robota: X=%.2f m, Y=%.2f m, Yaw=%.1f deg", pose_x, pose_y, pose_yaw * 180.0f / M_PI);
-        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Czerwona linia = przod (+X w prawo na ekranie)");
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Czerwona linia = przod (+X w prawo, +Y w gore na ekranie)");
         ImGui::End();
     }
 
@@ -205,7 +205,7 @@ private:
         int grid_y = static_cast<int>((py + (map_size / 2.0f)) / resolution);
 
         return ImVec2(p.x + grid_x * cell_draw_size + (cell_draw_size / 2.0f),
-                      p.y + grid_y * cell_draw_size + (cell_draw_size / 2.0f));
+                      p.y + (height_map - 1 - grid_y) * cell_draw_size + (cell_draw_size / 2.0f));
     }
 
     void mapping(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
