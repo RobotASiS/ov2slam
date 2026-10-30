@@ -36,6 +36,7 @@ class MPCNode(Node):
         self.declare_parameter('publish_steering_angle', True)
         self.declare_parameter('cam_offset_x', 0.0)
         self.declare_parameter('max_pose_speed', 1.0)
+        self.declare_parameter('pose_check_window', 0.5)
 
         self.N = self.get_parameter('horizon_N').value
         self.dt = self.get_parameter('dt').value
@@ -53,6 +54,7 @@ class MPCNode(Node):
         self.publish_steering_angle = self.get_parameter('publish_steering_angle').value
         self.cam_offset_x = self.get_parameter('cam_offset_x').value
         self.max_pose_speed = self.get_parameter('max_pose_speed').value
+        self.pose_check_window = self.get_parameter('pose_check_window').value
 
         self.sub_odom = self.create_subscription(
             Odometry,
@@ -168,19 +170,27 @@ class MPCNode(Node):
 
     def pose_jumped(self, x, y):
         # Robot fizycznie nie moze jechac szybciej niz max_pose_speed, wiec taki ruch
-        # pozycji oznacza, ze SLAM stracil tracking
+        # pozycji oznacza, ze SLAM stracil tracking. Porownanie w oknie pose_check_window,
+        # bo pozycja przychodzi skokami co klatke i krotszy odcinek daje falszywe alarmy
         now = self.get_clock().now().nanoseconds * 1e-9
-        jumped = False
-        if self.prev_pose_xy is not None:
-            elapsed = now - self.prev_pose_time
-            dist = np.hypot(x - self.prev_pose_xy[0], y - self.prev_pose_xy[1])
-            jumped = elapsed > 1e-3 and dist / elapsed > self.max_pose_speed
-            if jumped:
-                self.get_logger().error(
-                    f'Skok pozycji: {dist:.2f} m w {elapsed:.2f} s - stop, wyslij nowy cel'
-                )
+        if self.prev_pose_xy is None:
+            self.prev_pose_xy = (x, y)
+            self.prev_pose_time = now
+            return False
+
+        elapsed = now - self.prev_pose_time
+        if elapsed < self.pose_check_window:
+            return False
+
+        dist = np.hypot(x - self.prev_pose_xy[0], y - self.prev_pose_xy[1])
         self.prev_pose_xy = (x, y)
         self.prev_pose_time = now
+
+        jumped = dist / elapsed > self.max_pose_speed
+        if jumped:
+            self.get_logger().error(
+                f'Skok pozycji: {dist:.2f} m w {elapsed:.2f} s - stop, wyslij nowy cel'
+            )
         return jumped
 
     def sample_reference_trajectory(self, current_x, current_y, current_yaw):
