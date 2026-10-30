@@ -65,6 +65,17 @@ public:
         img1_buf.push(image);
     }
 
+    // Side-by-side stereo frame: keep only the newest one, an older frame is dropped whole
+    void subStereoImage(const sensor_msgs::msg::Image &image) {
+        std::lock_guard<std::mutex> lock(img_mutex);
+        stereo_img = image;
+        bnew_stereo_img = true;
+    }
+
+    void useStereoTopic() {
+        buse_stereo_topic = true;
+    }
+
     cv::Mat getGrayImageFromMsg(const sensor_msgs::msg::Image &img_msg)
     {
         // Get and prepare images
@@ -88,7 +99,33 @@ public:
         
         while( !pslam_->bexit_required_ )
         {
-            if( pslam_->pslamstate_->stereo_ )
+            if( buse_stereo_topic )
+            {
+                sensor_msgs::msg::Image image;
+                bool bhas_image = false;
+
+                {
+                    std::lock_guard<std::mutex> lock(img_mutex);
+                    if( bnew_stereo_img ) {
+                        image = stereo_img;
+                        bnew_stereo_img = false;
+                        bhas_image = true;
+                    }
+                }
+
+                if( bhas_image )
+                {
+                    // Both eyes come from one frame, so they always have the same timestamp
+                    cv::Mat frame = getGrayImageFromMsg(image);
+                    int mid = frame.cols / 2;
+                    cv::Mat image0 = frame.colRange(0, mid).clone();
+                    cv::Mat image1 = frame.colRange(mid, frame.cols).clone();
+
+                    double time = rclcpp::Time( image.header.stamp ).seconds();
+                    pslam_->addNewStereoImages(time, image0, image1);
+                }
+            }
+            else if( pslam_->pslamstate_->stereo_ )
             {
                 cv::Mat image0, image1;
 
@@ -151,7 +188,11 @@ public:
     std::queue<sensor_msgs::msg::Image> img0_buf;
     std::queue<sensor_msgs::msg::Image> img1_buf;
     std::mutex img_mutex;
-    
+
+    sensor_msgs::msg::Image stereo_img;
+    bool bnew_stereo_img = false;
+    bool buse_stereo_topic = false;
+
     SlamManager *pslam_;
 };
 
@@ -201,8 +242,15 @@ int main(int argc, char** argv)
     SensorsGrabber sb(&slam);
 
     // Create callbacks according to the topics set in the parameters file
-    auto subleft = node->create_subscription<sensor_msgs::msg::Image>((std::string)fsSettings["Camera.topic_left"], rclcpp::SensorDataQoS(), [&sb](const sensor_msgs::msg::Image &image){return sb.subLeftImage(image);});
-    auto subright = node->create_subscription<sensor_msgs::msg::Image>((std::string)fsSettings["Camera.topic_right"], rclcpp::SensorDataQoS(), [&sb](const sensor_msgs::msg::Image &image){return sb.subRightImage(image);});
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subleft, subright, substereo;
+
+    if( !fsSettings["Camera.topic_stereo"].empty() ) {
+        sb.useStereoTopic();
+        substereo = node->create_subscription<sensor_msgs::msg::Image>((std::string)fsSettings["Camera.topic_stereo"], rclcpp::SensorDataQoS(), [&sb](const sensor_msgs::msg::Image &image){return sb.subStereoImage(image);});
+    } else {
+        subleft = node->create_subscription<sensor_msgs::msg::Image>((std::string)fsSettings["Camera.topic_left"], rclcpp::SensorDataQoS(), [&sb](const sensor_msgs::msg::Image &image){return sb.subLeftImage(image);});
+        subright = node->create_subscription<sensor_msgs::msg::Image>((std::string)fsSettings["Camera.topic_right"], rclcpp::SensorDataQoS(), [&sb](const sensor_msgs::msg::Image &image){return sb.subRightImage(image);});
+    }
 
     // Start a thread for providing new measurements to the SLAM
     std::thread sync_thread(&SensorsGrabber::sync_process, &sb);

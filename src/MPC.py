@@ -35,6 +35,7 @@ class MPCNode(Node):
         self.declare_parameter('psi_max_deg', 35.0)
         self.declare_parameter('publish_steering_angle', True)
         self.declare_parameter('cam_offset_x', 0.0)
+        self.declare_parameter('max_pose_speed', 1.0)
 
         self.N = self.get_parameter('horizon_N').value
         self.dt = self.get_parameter('dt').value
@@ -51,6 +52,7 @@ class MPCNode(Node):
         self.psi_max_deg = self.get_parameter('psi_max_deg').value
         self.publish_steering_angle = self.get_parameter('publish_steering_angle').value
         self.cam_offset_x = self.get_parameter('cam_offset_x').value
+        self.max_pose_speed = self.get_parameter('max_pose_speed').value
 
         self.sub_odom = self.create_subscription(
             Odometry,
@@ -70,6 +72,8 @@ class MPCNode(Node):
         self.current_pose = None
         self.current_path = None
         self.step_count = 0
+        self.prev_pose_xy = None
+        self.prev_pose_time = None
 
         self.init_solver()
         self.timer = self.create_timer(self.dt, self.control_loop)
@@ -154,12 +158,30 @@ class MPCNode(Node):
     def path_callback(self, msg: Path):
         if len(msg.poses) >= 2:
             self.current_path = msg.poses
+            self.prev_pose_xy = None
             self.get_logger().info(
                 f'MPC received new reference path with {len(msg.poses)} waypoints.'
             )
         else:
             self.current_path = None
             self.pub_cmd_vel.publish(Twist())
+
+    def pose_jumped(self, x, y):
+        # Robot fizycznie nie moze jechac szybciej niz max_pose_speed, wiec taki ruch
+        # pozycji oznacza, ze SLAM stracil tracking
+        now = self.get_clock().now().nanoseconds * 1e-9
+        jumped = False
+        if self.prev_pose_xy is not None:
+            elapsed = now - self.prev_pose_time
+            dist = np.hypot(x - self.prev_pose_xy[0], y - self.prev_pose_xy[1])
+            jumped = elapsed > 1e-3 and dist / elapsed > self.max_pose_speed
+            if jumped:
+                self.get_logger().error(
+                    f'Skok pozycji: {dist:.2f} m w {elapsed:.2f} s - stop, wyslij nowy cel'
+                )
+        self.prev_pose_xy = (x, y)
+        self.prev_pose_time = now
+        return jumped
 
     def sample_reference_trajectory(self, current_x, current_y, current_yaw):
         if not self.current_path:
@@ -220,6 +242,13 @@ class MPCNode(Node):
         robot_x = self.current_pose.position.x
         robot_y = self.current_pose.position.y
         robot_yaw = get_yaw_from_quaternion(self.current_pose.orientation)
+
+        if self.pose_jumped(robot_x, robot_y):
+            self.current_path = None
+            self.u0 = np.zeros_like(self.u0)
+            self.pub_cmd_vel.publish(Twist())
+            return
+
         # odometria to poza kamery (punkt K), model liczy wzgledem srodka tylnej osi (punkt P)
         robot_x -= self.cam_offset_x * np.cos(robot_yaw)
         robot_y -= self.cam_offset_x * np.sin(robot_yaw)

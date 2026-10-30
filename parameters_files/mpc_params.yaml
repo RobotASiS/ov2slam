@@ -14,4 +14,5 @@ mpc_node:
     r_psi: 0.5
     psi_max_deg: 30.0
     cam_offset_x: 0.2165
+    max_pose_speed: 1.0
     publish_steering_angle: true

@@ -31,19 +31,12 @@ def generate_launch_description():
             parameters=[{
                 'video_device': '/dev/video0',   
                 'image_size': [2560, 720],       
-                'pixel_format': 'YUYV'
+                'pixel_format': 'YUYV',
+                'output_encoding': 'mono8'
             }]
         ),
 
-        # 1. Węzeł rozdzielający obraz na left i right
-        Node(
-            package='ov2slam',
-            executable='stereo_publisher.py',
-            name='stereo_publisher',
-            output='screen'
-        ),
-
-        # 2. Główny węzeł OV2SLAM (Stereo)
+        # 2. Główny węzeł OV2SLAM (Stereo), sam tnie /image_raw na lewe i prawe oko
         Node(
             package='ov2slam',
             executable='ov2slam_node',

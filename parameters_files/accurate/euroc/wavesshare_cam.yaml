@@ -7,6 +7,7 @@
 
 Camera.topic_left: /left/image_raw
 Camera.topic_right: /right/image_raw
+Camera.topic_stereo: /image_raw
 
 Camera.model_left: pinhole
 Camera.model_right: pinhole
