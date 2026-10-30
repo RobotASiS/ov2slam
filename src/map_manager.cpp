@@ -24,6 +24,8 @@
 *             Martial Sanfourche <first.last at onera dot fr>      (ONERA, DTIS - IVA)
 */
 
+#include <algorithm>
+
 #include <opencv2/highgui.hpp>
 
 #include "multi_view_geometry.hpp"
@@ -541,16 +543,19 @@ void MapManager::stereoMatching(Frame &frame, const std::vector<cv::Mat> &vleftp
                 << " out of " << nb3dkps << " kps tracked!\n";
     }
 
+    // Nb of tracks with prior, the ones after this index were tracked without prior
+    size_t nbpriorkps = vgoodids.size();
+
     // 2nd track other kps if any
-    if( !vkps.empty() ) 
+    if( !vkps.empty() )
     {
         // Good / bad kps vector
         std::vector<bool> vkpstatus;
 
         ptracker_->fbKltTracking(
-                    vleftpyr, 
-                    vrightpyr, 
-                    pslamstate_->nklt_win_size_, 
+                    vleftpyr,
+                    vrightpyr,
+                    pslamstate_->nklt_win_size_,
                     pslamstate_->nklt_pyr_lvl_, 
                     pslamstate_->nklt_err_, 
                     pslamstate_->fmax_fbklt_dist_, 
@@ -580,7 +585,11 @@ void MapManager::stereoMatching(Frame &frame, const std::vector<cv::Mat> &vleftp
 
     float epi_err = 0.;
 
-    for( size_t i = 0; i < nbkps ; i++ ) 
+    // Row differences of the kps tracked without prior (for debug)
+    std::vector<float> vrowdiffs;
+    vrowdiffs.reserve(nbkps);
+
+    for( size_t i = 0; i < nbkps ; i++ )
     {
         cv::Point2f lunpx = frame.getKeypointById(vgoodids.at(i)).unpx_;
         cv::Point2f runpx = frame.pcalib_rightcam_->undistortImagePoint(vgoodrkps.at(i));
@@ -588,6 +597,9 @@ void MapManager::stereoMatching(Frame &frame, const std::vector<cv::Mat> &vleftp
         // Check epipolar consistency (same row for rectified images)
         if( pslamstate_->bdo_stereo_rect_ ) {
             epi_err = fabs(lunpx.y - runpx.y);
+            if( i >= nbpriorkps ) {
+                vrowdiffs.push_back(lunpx.y - runpx.y);
+            }
             // Correct right kp to be on the same row
             vgoodrkps.at(i).y = lunpx.y;
         }
@@ -605,6 +617,15 @@ void MapManager::stereoMatching(Frame &frame, const std::vector<cv::Mat> &vleftp
     if( pslamstate_->debug_ )
         std::cout << "\n \t>>> Nb of stereo tracks: " << nbgood
             << " out of " << nbkps << "\n";
+
+    if( pslamstate_->debug_ && !vrowdiffs.empty() ) {
+        std::sort(vrowdiffs.begin(), vrowdiffs.end());
+        size_t nbdiffs = vrowdiffs.size();
+        std::cout << "\n \t>>> Stereo row diff [px] : p10 = " << vrowdiffs.at(nbdiffs / 10)
+            << " / median = " << vrowdiffs.at(nbdiffs / 2)
+            << " / p90 = " << vrowdiffs.at(nbdiffs * 9 / 10)
+            << " (" << nbdiffs << " kps)\n";
+    }
 
     if( pslamstate_->debug_ || pslamstate_->log_timings_ )
         Profiler::StopAndDisplay(pslamstate_->debug_, "1.KF_stereoMatching");
