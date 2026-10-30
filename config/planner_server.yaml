@@ -2,11 +2,12 @@ planner_server:
   ros__parameters:
     planner_plugins: ['GridBased']
     GridBased:
-      plugin: 'nav2_navfn_planner/NavfnPlanner' # In Iron and older versions, "/" was used instead of "::"
-      use_astar: True
+      plugin: 'nav2_smac_planner/SmacPlannerHybrid' # In Iron and older versions, "/" was used instead of "::"
+      motion_model_for_search: 'DUBIN' # tylko jazda do przodu
+      minimum_turning_radius: 0.40 # L / tan(psi_max) = 0.375 m + zapas
       allow_unknown: True
       tolerance: 0.1
-      max_cycles_factor: 4
+      max_planning_time: 2.0
 global_costmap:
   global_costmap:
     ros__parameters:

@@ -109,10 +109,13 @@ private:
       msg.pose.position.x = (gx * resolution) - (map_size / 2.0f) + (resolution / 2.0f);
       msg.pose.position.y = (gy * resolution) - (map_size / 2.0f) + (resolution / 2.0f);
       msg.pose.position.z = 0.0;
+
+      // Planner uwzglednia kat w celu, wiec robot ma dojechac przodem w kierunku klikniecia
+      double goal_yaw = std::atan2(msg.pose.position.y - pose_y, msg.pose.position.x - pose_x);
       msg.pose.orientation.x = 0.0;
       msg.pose.orientation.y = 0.0;
-      msg.pose.orientation.z = 0.0;
-      msg.pose.orientation.w = 1.0;
+      msg.pose.orientation.z = std::sin(goal_yaw / 2.0);
+      msg.pose.orientation.w = std::cos(goal_yaw / 2.0);
       goal_pub->publish(msg);
     }
     void NavMap(){
