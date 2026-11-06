@@ -4,7 +4,7 @@ import casadi as ca
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
 from nav_msgs.msg import Path, Odometry
 
 def get_yaw_from_quaternion(q):
@@ -76,6 +76,9 @@ class MPCNode(Node):
         self.step_count = 0
         self.prev_pose_xy = None
         self.prev_pose_time = None
+        self.pub_goal = self.create_publisher(PoseStamped, '/goal', 10)
+        self.replans = 0
+        self.max_replans = 3
 
         self.init_solver()
         self.timer = self.create_timer(self.dt, self.control_loop)
@@ -207,7 +210,23 @@ class MPCNode(Node):
             diffs = np.diff(path_pts[min_idx:], axis=0)
             rem_dist = float(np.sum(np.linalg.norm(diffs, axis=1)))
 
+        goal_dist = np.linalg.norm(path_pts[-1] - np.array([current_x, current_y]))
+
+        if goal_dist <= self.goal_tol:
+            self.replans = 0
+            self.get_logger().info('Goal reached! Robot stopped.')
+            return None, 0.0, True
+
         if rem_dist <= self.goal_tol:
+            if self.replans < self.max_replans:
+                self.replans += 1
+                self.get_logger().warn(
+                    f'Cel o {goal_dist:.2f} m - nowa trasa ({self.replans}/{self.max_replans})'
+                )
+                self.pub_goal.publish(self.current_path[-1])
+            else:
+                self.replans = 0
+                self.get_logger().error(f'Nie dojechalem, cel o {goal_dist:.2f} m - stop')
             return None, 0.0, True
 
         v_target = self.v_max * np.tanh(rem_dist / self.d_slowdown)
@@ -270,9 +289,7 @@ class MPCNode(Node):
         cmd = Twist()
         if goal_reached:
             self.pub_cmd_vel.publish(cmd)
-            if self.current_path is not None:
-                self.get_logger().info('Goal reached! Robot stopped.')
-                self.current_path = None
+            self.current_path = None
             return
 
         p_val = np.hstack([[robot_x, robot_y, robot_yaw], ref_traj.flatten()])
@@ -303,7 +320,7 @@ def main(args=None):
     node = MPCNode()
     try:
         rclpy.spin(node)
-    except (KeyboardInterrupt, Exception):
+    except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()

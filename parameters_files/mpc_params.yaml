@@ -5,7 +5,7 @@ mpc_node:
     wheelbase: 0.2165
     v_max: 0.25
     d_slowdown: 0.8
-    goal_tolerance: 0.08
+    goal_tolerance: 0.15
     mode: 0
     q_x: 5.0
     q_y: 5.0

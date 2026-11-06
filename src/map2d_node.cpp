@@ -234,9 +234,35 @@ private:
             point_counts[index]++;
         }
 
+        // Komorki, ktore przeszly prog liczby punktow
+        std::vector<uint8_t> occupied(width_map * height_map, 0);
         for (size_t i = 0; i < point_counts.size(); ++i) {
-            if (point_counts[i] >= 3) { 
-                grid_map[i] = static_cast<int8_t>(std::min(point_counts[i], 127)); // int8_t max
+            if (point_counts[i] >= min_points_per_cell) {
+                occupied[i] = 1;
+            }
+        }
+
+        // Filtr samotnych komorek: zajeta komorka bez zajetych sasiadow (8-sasiedztwo)
+        // to zwykle szum z SLAMa - wywalamy, chyba ze ma bardzo duzo punktow (np. cienka noga stolu)
+        for (int y = 0; y < height_map; ++y) {
+            for (int x = 0; x < width_map; ++x) {
+                int index = (y * width_map) + x;
+                if (!occupied[index]) {
+                    continue;
+                }
+                int neighbors = 0;
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (nx < 0 || nx >= width_map || ny < 0 || ny >= height_map) continue;
+                        neighbors += occupied[(ny * width_map) + nx];
+                    }
+                }
+                if (neighbors >= min_neighbors || point_counts[index] >= strong_cell_points) {
+                    grid_map[index] = static_cast<int8_t>(std::min(point_counts[index], 127)); // int8_t max
+                }
             }
         }
     }
@@ -258,6 +284,11 @@ private:
     const float cam_height = 0.092f;
     const float min_obstacle_height = 0.03f;
     const float max_obstacle_height = 0.50f;
+
+    // Filtracja szumu w siatce
+    const int min_points_per_cell = 3;   // min. punktow zeby komorka byla zajeta
+    const int min_neighbors = 1;         // min. zajetych sasiadow zeby komorka przetrwala
+    const int strong_cell_points = 10;   // tyle punktow = zostaje nawet jak samotna
 
     std::vector<int8_t> grid_map;
     nav_msgs::msg::Path path;
