@@ -7,7 +7,8 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Path, Odometry
-from std_msgs.msg import Empty, Float64MultiArray
+from std_msgs.msg import Empty, Float64MultiArray, Int64MultiArray
+from collections import deque
 
 def get_yaw_from_quaternion(q):
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
@@ -39,6 +40,13 @@ class MPCNode(Node):
         self.declare_parameter('cam_offset_x', 0.0)
         self.declare_parameter('max_pose_speed', 1.0)
         self.declare_parameter('pose_check_window', 0.5)
+        # Kontrola SLAM vs enkodery: kola przejechaly duzo, a SLAM prawie nic -> SLAM nie nadaza
+        self.declare_parameter('slam_check_enabled', True)
+        self.declare_parameter('slam_check_window', 1.0)      # [s]
+        self.declare_parameter('slam_check_min_enc_dist', 0.15)  # [m] ponizej nie sprawdzamy
+        self.declare_parameter('slam_check_min_ratio', 0.3)   # SLAM / enkodery
+        self.declare_parameter('wheel_radius', 0.035)
+        self.declare_parameter('ticks_per_rev', 1000.0)
 
         self.N = self.get_parameter('horizon_N').value
         self.dt = self.get_parameter('dt').value
@@ -57,11 +65,25 @@ class MPCNode(Node):
         self.cam_offset_x = self.get_parameter('cam_offset_x').value
         self.max_pose_speed = self.get_parameter('max_pose_speed').value
         self.pose_check_window = self.get_parameter('pose_check_window').value
+        self.slam_check_enabled = self.get_parameter('slam_check_enabled').value
+        self.slam_check_window = self.get_parameter('slam_check_window').value
+        self.slam_check_min_enc_dist = self.get_parameter('slam_check_min_enc_dist').value
+        self.slam_check_min_ratio = self.get_parameter('slam_check_min_ratio').value
+        self.m_per_tick = 2.0 * np.pi * self.get_parameter('wheel_radius').value / \
+            self.get_parameter('ticks_per_rev').value
+        self.enc_dist = None          # skumulowana droga srodka osi z enkoderow [m]
+        self.slam_check_hist = deque()
 
         self.sub_odom = self.create_subscription(
             Odometry,
             '/odometry/filtered',
             self.odom_callback,
+            10
+        )
+        self.sub_enc = self.create_subscription(
+            Int64MultiArray,
+            '/esp32/encoders',
+            self.encoders_callback,
             10
         )
         self.sub_path = self.create_subscription(
@@ -164,11 +186,43 @@ class MPCNode(Node):
     def odom_callback(self, msg: Odometry):
         self.current_pose = msg.pose.pose
 
+    def encoders_callback(self, msg: Int64MultiArray):
+        if len(msg.data) < 2:
+            return
+        # srodek osi = srednia kol; mostek juz odwraca znak lewego enkodera
+        self.enc_dist = 0.5 * (msg.data[0] + msg.data[1]) * self.m_per_tick
+
+    def slam_lagging(self, x, y):
+        # Porownanie drogi z enkoderow i ze SLAMa w oknie slam_check_window.
+        # Przypadek z logow: kola zrobily 1.1 m po luku, SLAM pokazal 6 cm, MPC krecil do oporu.
+        if not self.slam_check_enabled or self.enc_dist is None:
+            return False
+        now = self.get_clock().now().nanoseconds * 1e-9
+        self.slam_check_hist.append((now, self.enc_dist, x, y))
+        while len(self.slam_check_hist) > 1 and now - self.slam_check_hist[1][0] >= self.slam_check_window:
+            self.slam_check_hist.popleft()
+
+        t_old, enc_old, x_old, y_old = self.slam_check_hist[0]
+        if now - t_old < self.slam_check_window:
+            return False
+
+        d_enc = abs(self.enc_dist - enc_old)
+        d_slam = float(np.hypot(x - x_old, y - y_old))
+        if d_enc < self.slam_check_min_enc_dist:
+            return False
+        if d_slam < self.slam_check_min_ratio * d_enc:
+            self.get_logger().error(
+                f'SLAM nie nadaza: kola {d_enc:.2f} m, SLAM {d_slam:.2f} m w {now - t_old:.1f} s - stop'
+            )
+            return True
+        return False
+
     def path_callback(self, msg: Path):
         if len(msg.poses) >= 2:
             # Planner przelicza trase co chwile - log i reset okna skokow tylko przy nowym celu
             if self.current_path is None:
                 self.prev_pose_xy = None
+                self.slam_check_hist.clear()
                 self.get_logger().info(
                     f'MPC received new reference path with {len(msg.poses)} waypoints.'
                 )
@@ -280,7 +334,7 @@ class MPCNode(Node):
         robot_y = self.current_pose.position.y
         robot_yaw = get_yaw_from_quaternion(self.current_pose.orientation)
 
-        if self.pose_jumped(robot_x, robot_y):
+        if self.pose_jumped(robot_x, robot_y) or self.slam_lagging(robot_x, robot_y):
             self.current_path = None
             self.pub_goal_cancel.publish(Empty())
             self.u0 = np.zeros_like(self.u0)

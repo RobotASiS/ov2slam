@@ -158,6 +158,9 @@ def main():
     a = axs[4]
     if mpc is not None:
         a.plot(mpc['t'] - t0, mpc['solve_ms'], label='solver MPC')
+    if vo is not None:
+        # vo_pose ma stempel czasu zdjecia, wiec to jest opoznienie kamera -> poza SLAM
+        a.plot(vo['t'] - t0, (vo['t'] - vo['t_msg']) * 1e3, '.-', label='opoznienie SLAM (kamera -> poza)')
     a.set_ylabel('[ms]')
     a.set_xlabel('t [s]')
     a.legend(fontsize=8)

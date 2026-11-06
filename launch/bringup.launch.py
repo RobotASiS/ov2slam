@@ -1,6 +1,9 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -22,6 +25,10 @@ def generate_launch_description():
     mpc_config_path = os.path.join(pkg_share, 'parameters_files', 'mpc_params.yaml')
 
     return LaunchDescription([
+        # RViz na malince mocno obciaza CPU (i X11 przez SSH), wiec domyslnie wylaczony.
+        # Wlaczenie: ros2 launch ov2slam bringup.launch.py rviz:=true
+        DeclareLaunchArgument('rviz', default_value='false'),
+
         # 0. Węzeł kamery stereo (V4L2)
         Node(
             package='v4l2_camera',
@@ -155,6 +162,7 @@ def generate_launch_description():
             executable='rviz2',
             name='rviz2',
             output='screen',
-            arguments=['-d', rviz_config_path]
+            arguments=['-d', rviz_config_path],
+            condition=IfCondition(LaunchConfiguration('rviz'))
         )
     ])

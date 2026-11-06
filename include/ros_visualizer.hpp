@@ -153,7 +153,10 @@ public:
 
         Twc_msg.pose.orientation = q;
 
-        Twc_msg.header = vo_traj_msg_.header;
+        // Czas zrobienia zdjecia, a nie publikacji - EKF dostaje prawdziwy czas pomiaru,
+        // a traj_logger moze policzyc opoznienie kamera -> poza (t - t_msg)
+        Twc_msg.header.frame_id = "world";
+        Twc_msg.header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_SYSTEM_TIME);
 
         pub_vo_pose_->publish(Twc_msg);
 
