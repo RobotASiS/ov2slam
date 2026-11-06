@@ -318,3 +318,4 @@ AMENT_IGNORE
 # Vendored ImGui (cloned during Docker build)
 Thirdparty/imgui/
 
+robot_logs/

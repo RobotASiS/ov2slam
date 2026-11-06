@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import time
 import casadi as ca
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import Twist
 from nav_msgs.msg import Path, Odometry
+from std_msgs.msg import Empty, Float64MultiArray
 
 def get_yaw_from_quaternion(q):
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
@@ -76,9 +78,11 @@ class MPCNode(Node):
         self.step_count = 0
         self.prev_pose_xy = None
         self.prev_pose_time = None
-        self.pub_goal = self.create_publisher(PoseStamped, '/goal', 10)
-        self.replans = 0
-        self.max_replans = 3
+        self.pub_goal_cancel = self.create_publisher(Empty, '/goal_cancel', 10)
+        # Wewnetrzny stan MPC do logowania (traj_logger.py), kolejnosc pol w publish_debug()
+        self.pub_debug = self.create_publisher(Float64MultiArray, '/mpc/debug', 10)
+        self.last_goal_dist = float('nan')
+        self.last_rem_dist = float('nan')
 
         self.init_solver()
         self.timer = self.create_timer(self.dt, self.control_loop)
@@ -162,11 +166,13 @@ class MPCNode(Node):
 
     def path_callback(self, msg: Path):
         if len(msg.poses) >= 2:
+            # Planner przelicza trase co chwile - log i reset okna skokow tylko przy nowym celu
+            if self.current_path is None:
+                self.prev_pose_xy = None
+                self.get_logger().info(
+                    f'MPC received new reference path with {len(msg.poses)} waypoints.'
+                )
             self.current_path = msg.poses
-            self.prev_pose_xy = None
-            self.get_logger().info(
-                f'MPC received new reference path with {len(msg.poses)} waypoints.'
-            )
         else:
             self.current_path = None
             self.pub_cmd_vel.publish(Twist())
@@ -210,26 +216,19 @@ class MPCNode(Node):
             diffs = np.diff(path_pts[min_idx:], axis=0)
             rem_dist = float(np.sum(np.linalg.norm(diffs, axis=1)))
 
-        goal_dist = np.linalg.norm(path_pts[-1] - np.array([current_x, current_y]))
+        goal_dist = float(np.linalg.norm(path_pts[-1] - np.array([current_x, current_y])))
+        self.last_goal_dist = goal_dist
+        self.last_rem_dist = rem_dist
 
+        # Jedyny warunek konca: robot jest przy celu
         if goal_dist <= self.goal_tol:
-            self.replans = 0
             self.get_logger().info('Goal reached! Robot stopped.')
+            self.pub_goal_cancel.publish(Empty())
             return None, 0.0, True
 
-        if rem_dist <= self.goal_tol:
-            if self.replans < self.max_replans:
-                self.replans += 1
-                self.get_logger().warn(
-                    f'Cel o {goal_dist:.2f} m - nowa trasa ({self.replans}/{self.max_replans})'
-                )
-                self.pub_goal.publish(self.current_path[-1])
-            else:
-                self.replans = 0
-                self.get_logger().error(f'Nie dojechalem, cel o {goal_dist:.2f} m - stop')
-            return None, 0.0, True
-
-        v_target = self.v_max * np.tanh(rem_dist / self.d_slowdown)
+        # Hamowanie liczone od wiekszej z odleglosci, zeby robot nie stanal,
+        # gdy zjechal z konca sciezki a cel jest jeszcze daleko
+        v_target = self.v_max * np.tanh(max(rem_dist, goal_dist) / self.d_slowdown)
         ds = v_target * self.dt
 
         ref_pts = []
@@ -264,6 +263,15 @@ class MPCNode(Node):
 
         return np.array(ref_pts), v_target, False
 
+    def publish_debug(self, x, y, yaw, ref0, v_target, v_cmd, psi_cmd, solve_ms):
+        # [x_P, y_P, yaw, ref_x, ref_y, ref_yaw, v_target, v_cmd, psi_cmd, goal_dist, rem_dist, solve_ms]
+        msg = Float64MultiArray()
+        msg.data = [float(x), float(y), float(yaw),
+                    float(ref0[0]), float(ref0[1]), float(ref0[2]),
+                    float(v_target), float(v_cmd), float(psi_cmd),
+                    float(self.last_goal_dist), float(self.last_rem_dist), float(solve_ms)]
+        self.pub_debug.publish(msg)
+
     def control_loop(self):
         if self.current_pose is None or self.current_path is None:
             return
@@ -274,6 +282,7 @@ class MPCNode(Node):
 
         if self.pose_jumped(robot_x, robot_y):
             self.current_path = None
+            self.pub_goal_cancel.publish(Empty())
             self.u0 = np.zeros_like(self.u0)
             self.pub_cmd_vel.publish(Twist())
             return
@@ -294,7 +303,9 @@ class MPCNode(Node):
 
         p_val = np.hstack([[robot_x, robot_y, robot_yaw], ref_traj.flatten()])
 
+        t_solve = time.perf_counter()
         sol = self.solver(x0=self.u0, p=p_val, lbx=self.lbx, ubx=self.ubx)
+        solve_ms = (time.perf_counter() - t_solve) * 1e3
         u_opt = sol['x'].full().reshape((self.N, 2))
 
         self.u0 = np.vstack([u_opt[1:], u_opt[-1:]]).reshape(-1, 1)
@@ -308,6 +319,7 @@ class MPCNode(Node):
         cmd.angular.z = psi_cmd if self.publish_steering_angle else omega_cmd
 
         self.pub_cmd_vel.publish(cmd)
+        self.publish_debug(robot_x, robot_y, robot_yaw, ref_traj[0], v_target, v_cmd, psi_cmd, solve_ms)
 
         self.step_count += 1
         if self.step_count % 10 == 0:

@@ -14,6 +14,8 @@
 #include <cmath>
 // #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/common/transforms.h>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/segmentation/sac_segmentation.h>
 #include "nav_msgs/msg/path.hpp"
 
 class MapperNode : public rclcpp::Node {
@@ -69,10 +71,10 @@ public:
         if (robot_grid_x >= 0 && robot_grid_x < width_map && robot_grid_y >= 0 && robot_grid_y < height_map) {
             ImVec2 center(p.x + robot_grid_x * cell_draw_size + (cell_draw_size / 2.0f),
                           p.y + (height_map - 1 - robot_grid_y) * cell_draw_size + (cell_draw_size / 2.0f));
-            draw_list->AddCircleFilled(center, cell_draw_size * 0.8f, IM_COL32(0, 255, 0, 255));
+            draw_list->AddCircleFilled(center, 6.0f, IM_COL32(0, 255, 0, 255));
 
             // Czerwona kreska wskazująca przód (orientację yaw) robota
-            float heading_length = cell_draw_size * 4.0f;
+            float heading_length = 30.0f;
             ImVec2 heading_end(center.x + std::cos(pose_yaw) * heading_length,
                                center.y - std::sin(pose_yaw) * heading_length);
             draw_list->AddLine(center, heading_end, IM_COL32(255, 0, 0, 255), 2.5f);
@@ -90,9 +92,15 @@ public:
         }
         for (const auto & pose_stamped : this->path.poses) {
             ImVec2 screen_pos = this->pose_to_grid(pose_stamped, p);
-            draw_list->AddCircleFilled(screen_pos, cell_draw_size * 0.5f, IM_COL32(0, 200, 255, 255)); 
+            draw_list->AddCircleFilled(screen_pos, 2.5f, IM_COL32(0, 200, 255, 255)); 
         }
         ImGui::Text("Pozycja robota: X=%.2f m, Y=%.2f m, Yaw=%.1f deg", pose_x, pose_y, pose_yaw * 180.0f / M_PI);
+        if (floor_valid) {
+            ImGui::Text("Podloga: pochylenie X=%.2f deg, Y=%.2f deg, c=%.3f m",
+                        std::atan(floor_a) * 180.0f / M_PI, std::atan(floor_b) * 180.0f / M_PI, floor_c);
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.0f, 1.0f), "Podloga: brak estymacji (stala cam_height)");
+        }
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Czerwona linia = przod (+X w prawo, +Y w gore na ekranie)");
         ImGui::End();
     }
@@ -186,6 +194,7 @@ private:
         //     clean_cloud = filtered_cloud;
         // }
 
+        estimate_floor(clean_cloud);
         mapping(clean_cloud);
         NavMap();
     }
@@ -211,14 +220,73 @@ private:
                       p.y + (height_map - 1 - grid_y) * cell_draw_size + (cell_draw_size / 2.0f));
     }
 
+    // Kamera jest lekko pochylona wzgledem podlogi, a uklad world SLAMa to pierwsza poza kamery.
+    // Przez to podloga "wznosi sie" z odlegloscia i dalekie punkty podlogi wpadaja w pas przeszkod.
+    // Dopasowujemy plaszczyzne podlogi z = a*x + b*y + c (RANSAC) i wysokosc liczymy wzgledem niej.
+    void estimate_floor(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
+        // Kandydaci na podloge: punkty w zasiegu i nisko (ponizej kamery, z zapasem na pochylenie)
+        pcl::PointCloud<pcl::PointXYZ>::Ptr candidates(new pcl::PointCloud<pcl::PointXYZ>());
+        for (const auto& pt : cloud->points) {
+            float dx = pt.x - pose_x;
+            float dy = pt.y - pose_y;
+            if (dx * dx + dy * dy > floor_search_radius * floor_search_radius) continue;
+            if (pt.z > floor_max_z) continue;
+            candidates->points.push_back(pt);
+        }
+        if (static_cast<int>(candidates->points.size()) < floor_min_inliers) return;
+        candidates->width = candidates->points.size();
+        candidates->height = 1;
+
+        pcl::SACSegmentation<pcl::PointXYZ> seg;
+        seg.setOptimizeCoefficients(true);
+        seg.setModelType(pcl::SACMODEL_PERPENDICULAR_PLANE);
+        seg.setMethodType(pcl::SAC_RANSAC);
+        seg.setAxis(Eigen::Vector3f(0.0f, 0.0f, 1.0f));
+        seg.setEpsAngle(floor_max_tilt);
+        seg.setDistanceThreshold(floor_ransac_dist);
+        seg.setMaxIterations(200);
+        seg.setInputCloud(candidates);
+
+        pcl::PointIndices inliers;
+        pcl::ModelCoefficients coeffs;
+        seg.segment(inliers, coeffs);
+        if (static_cast<int>(inliers.indices.size()) < floor_min_inliers) return;
+
+        // n_x*x + n_y*y + n_z*z + d = 0  ->  z = a*x + b*y + c
+        float nx = coeffs.values[0], ny = coeffs.values[1], nz = coeffs.values[2], d = coeffs.values[3];
+        if (std::abs(nz) < 1e-3f) return;
+        float a = -nx / nz;
+        float b = -ny / nz;
+        float c = -d / nz;
+
+        // Sanity: podloga musi byc mniej wiecej na wysokosci -cam_height (inaczej to np. blat stolu)
+        if (std::abs(c + cam_height) > floor_max_offset) return;
+
+        if (!floor_valid) {
+            floor_a = a; floor_b = b; floor_c = c;
+            floor_valid = true;
+        } else {
+            floor_a += floor_alpha * (a - floor_a);
+            floor_b += floor_alpha * (b - floor_b);
+            floor_c += floor_alpha * (c - floor_c);
+        }
+    }
+
+    float height_above_floor(const pcl::PointXYZ& pt) const {
+        if (floor_valid) {
+            return pt.z - (floor_a * pt.x + floor_b * pt.y + floor_c);
+        }
+        return pt.z + cam_height;
+    }
+
     void mapping(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud) {
         std::fill(grid_map.begin(), grid_map.end(), 0);
         
         std::vector<int> point_counts(width_map * height_map, 0);
 
         for (auto& point : cloud->points) {
-            // Wysokosc nad podloga: SLAM liczy z od kamery
-            float z_floor = point.z + cam_height;
+            // Wysokosc nad dopasowana plaszczyzna podlogi
+            float z_floor = height_above_floor(point);
             if (z_floor < min_obstacle_height || z_floor > max_obstacle_height) {
                 continue;
             }
@@ -273,17 +341,28 @@ private:
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub;
 
-    // Mapa 4 x 4 m, komorka 5 cm
-    const int width_map = 80;
-    const int height_map = 80;
+    // Mapa 4 x 4 m, komorka 2 cm
+    const int width_map = 200;
+    const int height_map = 200;
     const float map_size = 4.0f;
     const float resolution = map_size / width_map;
-    const float cell_draw_size = 10.0f;
+    const float cell_draw_size = 3.5f;
 
     // Przeszkody liczone od podlogi [m]
     const float cam_height = 0.092f;
     const float min_obstacle_height = 0.03f;
     const float max_obstacle_height = 0.50f;
+
+    // Estymacja plaszczyzny podlogi (RANSAC)
+    const float floor_search_radius = 2.0f;               // [m] wokol robota
+    const float floor_max_z = 0.10f;                      // [m] kandydaci nizej niz to (uklad kamery)
+    const float floor_max_tilt = 15.0f * M_PI / 180.0f;   // max odchylenie normalnej od pionu
+    const float floor_ransac_dist = 0.02f;                // [m] prog inliera
+    const int floor_min_inliers = 30;
+    const float floor_max_offset = 0.06f;                 // [m] max roznica c od -cam_height
+    const float floor_alpha = 0.2f;                       // filtr dolnoprzepustowy wspolczynnikow
+    bool floor_valid = false;
+    float floor_a = 0.0f, floor_b = 0.0f, floor_c = 0.0f;
 
     // Filtracja szumu w siatce
     const int min_points_per_cell = 3;   // min. punktow zeby komorka byla zajeta

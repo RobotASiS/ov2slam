@@ -235,6 +235,7 @@ find_package(rclcpp_action REQUIRED)
       geometry_msgs
       nav_msgs
       nav2_msgs
+      std_msgs
     )
     install(TARGETS path_planner_node DESTINATION lib/${PROJECT_NAME})
 ############################
@@ -345,6 +346,7 @@ install(PROGRAMS
 
 install(PROGRAMS
   scripts/stereo_publisher.py
+  scripts/traj_logger.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

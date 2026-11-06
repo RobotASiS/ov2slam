@@ -131,6 +131,14 @@ def generate_launch_description():
             }]
         ),
 
+        # Logger przejazdu do CSV (plot: scripts/plot_run.py)
+        Node(
+            package='ov2slam',
+            executable='traj_logger.py',
+            name='traj_logger',
+            output='screen',
+        ),
+
         # 9. Połączenie drzewa TF (world -> odom dla Nav2)
         Node(
             package='tf2_ros',
