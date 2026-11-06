@@ -34,10 +34,13 @@ docker run -it --rm \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     --device="/dev/video0:/dev/video0" \
     --device="/dev/i2c-1:/dev/i2c-1" \
+    --volume="$HOME/robot_logs:/ws/robot_logs:rw" \
     ov2slam_docker \
     bash
 ```
 *(Note: `--device="/dev/i2c-1:/dev/i2c-1"` was added to give container access to the sensors)*
+
+*(Note: `--volume="$HOME/robot_logs:/ws/robot_logs:rw"` - logi przejazdu z `traj_logger` laduja od razu na hoscie w `~/robot_logs/run_*`. Pliki tworzy root z kontenera, wiec ewentualnie `sudo chown -R $USER ~/robot_logs`. Plot: `python3 scripts/plot_run.py ~/robot_logs/run_...`)*
 
 **Running over SSH (with X11 Forwarding):**
 If you are connecting via SSH, you must connect with the `-Y` flag (trusted X11 forwarding):
@@ -54,6 +57,7 @@ docker run -it --rm \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     --device="/dev/video0:/dev/video0" \
     --device="/dev/i2c-1:/dev/i2c-1" \
+    --volume="$HOME/robot_logs:/ws/robot_logs:rw" \
     ov2slam_docker \
     bash
 ```

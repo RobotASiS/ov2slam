@@ -137,6 +137,8 @@ def generate_launch_description():
             executable='traj_logger.py',
             name='traj_logger',
             output='screen',
+            # katalog montowany z hosta w docker run (-v $HOME/robot_logs:/ws/robot_logs)
+            parameters=[{'log_dir': '/ws/robot_logs'}],
         ),
 
         # 9. Połączenie drzewa TF (world -> odom dla Nav2)
